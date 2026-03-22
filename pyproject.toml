@@ -1,0 +1,20 @@
+[project]
+name = "at-streaming-data-pipeline"
+version = "0.1.0"
+description = "Auckland Transport Real-time Streaming Pipeline"
+readme = "README.md"
+requires-python = ">=3.12.8"
+dependencies = [
+    "confluent-kafka[avro]>=2.3.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "pyspark>=3.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=24.0.0",
+    "ruff>=0.3.0",
+    "pytest>=8.0.0",
+    "pytest-mock>=3.12.0",
+]

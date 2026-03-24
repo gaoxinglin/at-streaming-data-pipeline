@@ -7,11 +7,13 @@ services:
       - start
       - --smp 1
       - --memory 512M
-      - --kafka-addr PLAINTEXT://0.0.0.0:9092
-      - --advertise-kafka-addr PLAINTEXT://localhost:9092
+      # 两个 listener：EXTERNAL 给宿主机，INTERNAL 给 Docker 容器内部
+      - --kafka-addr EXTERNAL://0.0.0.0:9092,INTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr EXTERNAL://localhost:9092,INTERNAL://redpanda:19092
       - --schema-registry-addr 0.0.0.0:8081
     ports:
-      - "9092:9092"
+      - "9092:9092"   # 宿主机（producer/consumer 用）
+      - "19092:19092" # Docker 内部（Console 用）
       - "8081:8081"
 
   redpanda-console:
@@ -19,9 +21,9 @@ services:
     container_name: redpanda-console
     ports:
       - "8080:8080"
+    volumes:
+      - ./redpanda-console-config.yaml:/etc/redpanda-console/config.yaml
     environment:
-      - KAFKA_BROKERS=redpanda:9092
-      - KAFKA_SCHEMAREGISTRY_ENABLED=true
-      - KAFKA_SCHEMAREGISTRY_URLS=http://redpanda:8081
+      - CONFIG_FILEPATH=/etc/redpanda-console/config.yaml
     depends_on:
       - redpanda

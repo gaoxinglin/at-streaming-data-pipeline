@@ -1,0 +1,29 @@
+services:
+  redpanda:
+    image: redpandadata/redpanda:latest
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --smp 1
+      - --memory 512M
+      # 两个 listener：EXTERNAL 给宿主机，INTERNAL 给 Docker 容器内部
+      - --kafka-addr EXTERNAL://0.0.0.0:9092,INTERNAL://0.0.0.0:19092
+      - --advertise-kafka-addr EXTERNAL://localhost:9092,INTERNAL://redpanda:19092
+      - --schema-registry-addr 0.0.0.0:8081
+    ports:
+      - "9092:9092"   # 宿主机（producer/consumer 用）
+      - "19092:19092" # Docker 内部（Console 用）
+      - "8081:8081"
+
+  redpanda-console:
+    image: redpandadata/console:latest
+    container_name: redpanda-console
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./redpanda-console-config.yaml:/etc/redpanda-console/config.yaml
+    environment:
+      - CONFIG_FILEPATH=/etc/redpanda-console/config.yaml
+    depends_on:
+      - redpanda

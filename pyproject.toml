@@ -9,6 +9,7 @@ dependencies = [
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
     "pyspark>=3.5.0",
+    "dbt-duckdb>=1.7.0",
 ]
 
 [dependency-groups]
@@ -17,4 +18,5 @@ dev = [
     "ruff>=0.3.0",
     "pytest>=8.0.0",
     "pytest-mock>=3.12.0",
+    "testcontainers>=4.0.0",
 ]

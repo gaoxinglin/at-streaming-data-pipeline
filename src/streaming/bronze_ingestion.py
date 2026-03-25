@@ -28,6 +28,7 @@ df = (
     .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
     .option("subscribe", TOPIC)
     .option("startingOffsets", "earliest")
+    .option("maxOffsetsPerTrigger", 10000)
     .load()
 )
 
@@ -37,9 +38,13 @@ schema_str = resp.json()["schema"]
 parsed = df.select(
     col("key").cast("string").alias("vehicle_id"),
     from_avro(expr("substring(value, 6)"), schema_str).alias("data"),
+    col("timestamp").alias("kafka_timestamp"),
 )
 
-enriched = parsed.select(
+# drop late events older than 10 minutes
+watermarked = parsed.withWatermark("kafka_timestamp", "10 minutes")
+
+enriched = watermarked.select(
     "vehicle_id",
     "data.latitude",
     "data.longitude",

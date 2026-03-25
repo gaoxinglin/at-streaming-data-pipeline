@@ -1,8 +1,17 @@
+import os
+import signal
+
+import requests
+from dotenv import load_dotenv
 from pyspark.sql import SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import col, expr, when, from_unixtime
-import requests
 
+load_dotenv()
+
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
+TOPIC = "at.vehicle_positions"
 
 spark = (
     SparkSession.builder
@@ -16,13 +25,13 @@ spark.sparkContext.setLogLevel("WARN")
 
 df = (
     spark.readStream.format("kafka")
-    .option("kafka.bootstrap.servers", "localhost:9092")
-    .option("subscribe", "at.vehicle_positions")
+    .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
+    .option("subscribe", TOPIC)
     .option("startingOffsets", "earliest")
     .load()
 )
 
-resp = requests.get("http://localhost:8081/subjects/at.vehicle_positions-value/versions/latest")
+resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{TOPIC}-value/versions/latest")
 schema_str = resp.json()["schema"]
 
 parsed = df.select(
@@ -56,5 +65,22 @@ query = (
     .start()
 )
 
-query.awaitTermination(timeout=60)
+# Ctrl+C or kill → set flag, main thread does the actual stop
+_shutdown = False
+
+def _stop(sig, frame):
+    global _shutdown
+    print(f"\nCaught signal {sig}, shutting down...")
+    _shutdown = True
+
+signal.signal(signal.SIGINT, _stop)
+signal.signal(signal.SIGTERM, _stop)
+
+# poll so we can check the flag between iterations
+while query.isActive:
+    if _shutdown:
+        query.stop()
+        break
+    query.awaitTermination(timeout=1)
+
 print("done")

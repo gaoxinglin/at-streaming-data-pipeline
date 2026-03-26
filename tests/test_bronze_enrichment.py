@@ -38,7 +38,6 @@ def _vp_schema():
         StructField("congestion_level", StringType()),
         StructField("occupancy_status", StringType()),
         StructField("timestamp", LongType()),
-        StructField("ts_raw", LongType()),
         StructField("_raw_payload", StringType()),
     ])
 
@@ -51,7 +50,7 @@ def _make_vp(spark, **overrides):
         "current_stop_sequence": None, "stop_id": None,
         "current_status": None, "congestion_level": None,
         "occupancy_status": None,
-        "timestamp": 1774345000, "ts_raw": 1774345000,
+        "timestamp": 1774345000,
         "_raw_payload": "{}",
     }
     defaults.update(overrides)
@@ -94,7 +93,6 @@ def _tu_schema():
         StructField("delay", IntegerType()),
         StructField("timestamp", LongType()),
         StructField("is_deleted", BooleanType()),
-        StructField("ts_raw", LongType()),
         StructField("_raw_payload", StringType()),
     ])
 
@@ -105,7 +103,7 @@ def _make_tu(spark, **overrides):
         "direction_id": 0, "start_time": "08:00:00",
         "start_date": "20260326", "schedule_relationship": 0,
         "delay": 360, "timestamp": 1774345000,
-        "is_deleted": False, "ts_raw": 1774345000,
+        "is_deleted": False,
         "_raw_payload": "{}",
     }
     defaults.update(overrides)
@@ -135,7 +133,6 @@ def _sa_schema():
         StructField("active_period_start", LongType()),
         StructField("active_period_end", LongType()),
         StructField("timestamp", LongType()),
-        StructField("ts_raw", LongType()),
         StructField("_raw_payload", StringType()),
     ])
 
@@ -146,7 +143,7 @@ def _make_sa(spark, **overrides):
         "cause": "CONSTRUCTION", "effect": "DETOUR",
         "header_text": "Detour on NX1", "description_text": "Road works",
         "active_period_start": 1774340000, "active_period_end": 1774350000,
-        "timestamp": 1774345000, "ts_raw": 1774345000,
+        "timestamp": 1774345000,
         "_raw_payload": "{}",
     }
     defaults.update(overrides)

@@ -1,4 +1,3 @@
-import json
 import os
 import signal
 import time
@@ -17,44 +16,24 @@ AT_API_KEY = os.environ["AT_API_KEY"]
 AT_BASE_URL = os.getenv("AT_BASE_URL", "https://api.at.govt.nz/realtime/legacy")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
-POLL_PEAK = int(os.getenv("POLL_INTERVAL_PEAK", "30"))           # 07-10, 15-19
-POLL_SHOULDER = int(os.getenv("POLL_INTERVAL_SHOULDER", "90"))   # 06-07, 10-15, 19-22
-POLL_OFFPEAK = int(os.getenv("POLL_INTERVAL_OFFPEAK", "300"))   # 22-06
+POLL_PEAK = int(os.getenv("POLL_INTERVAL_PEAK", "30"))           # 06:00-09:00, 15:00-18:30
+POLL_SHOULDER = int(os.getenv("POLL_INTERVAL_SHOULDER", "60"))   # 09:00-15:00, 18:30-22:00
+POLL_OFFPEAK = int(os.getenv("POLL_INTERVAL_OFFPEAK", "300"))   # 22:00-06:00
+POLL_ALERTS = int(os.getenv("POLL_INTERVAL_ALERTS", "300"))      # service alerts — fixed
 
 
-def _poll_interval():
-    """3-tier adaptive polling based on Auckland transit demand patterns."""
-    hour = datetime.now().hour
-    if (7 <= hour < 10) or (15 <= hour < 19):
-        return POLL_PEAK       # rush hour — max resolution for Q2/Q3
-    elif (22 <= hour or hour < 6):
-        return POLL_OFFPEAK    # overnight — maintain continuity, minimal cost
+def _realtime_interval():
+    """3-tier adaptive polling for vehicle_positions and trip_updates."""
+    now = datetime.now()
+    t = now.hour * 60 + now.minute  # minutes since midnight
+    if (360 <= t < 540) or (900 <= t < 1110):  # 06:00-09:00, 15:00-18:30
+        return POLL_PEAK
+    elif (1320 <= t or t < 360):  # 22:00-06:00
+        return POLL_OFFPEAK
     else:
-        return POLL_SHOULDER   # shoulder — moderate resolution
+        return POLL_SHOULDER
 
 SCHEMAS_DIR = os.path.join(os.path.dirname(__file__), "schemas")
-
-# topic → (api path, schema file, key extractor, entity flattener)
-FEEDS = {
-    "at.vehicle_positions": {
-        "url": f"{AT_BASE_URL}/vehiclelocations",
-        "schema_file": "vehicle_position.avsc",
-        "flatten": "_flatten_vehicle_position",
-        "key_field": "vehicle_id",
-    },
-    "at.trip_updates": {
-        "url": f"{AT_BASE_URL}/tripupdates",
-        "schema_file": "trip_update.avsc",
-        "flatten": "_flatten_trip_update",
-        "key_field": "trip_id",
-    },
-    "at.service_alerts": {
-        "url": f"{AT_BASE_URL}/servicealerts",
-        "schema_file": "service_alert.avsc",
-        "flatten": "_flatten_service_alert",
-        "key_field": "id",
-    },
-}
 
 
 def _load_schema(filename):
@@ -104,13 +83,10 @@ def _flatten_trip_update(entity):
 
 def _flatten_service_alert(entity):
     alert = entity["alert"]
-    # route_id from first informed_entity if available
     informed = alert.get("informed_entity", [{}])
     route_id = informed[0].get("route_id") if informed else None
-    # active periods
     periods = alert.get("active_period", [{}])
     period = periods[0] if periods else {}
-    # text fields
     header = alert.get("header_text", {})
     desc = alert.get("description_text", {})
     return {
@@ -126,10 +102,28 @@ def _flatten_service_alert(entity):
     }
 
 
-FLATTEN_FNS = {
-    "_flatten_vehicle_position": _flatten_vehicle_position,
-    "_flatten_trip_update": _flatten_trip_update,
-    "_flatten_service_alert": _flatten_service_alert,
+FEEDS = {
+    "at.vehicle_positions": {
+        "url": f"{AT_BASE_URL}/vehiclelocations",
+        "schema_file": "vehicle_position.avsc",
+        "flatten": _flatten_vehicle_position,
+        "key_field": "vehicle_id",
+        "interval": _realtime_interval,  # adaptive
+    },
+    "at.trip_updates": {
+        "url": f"{AT_BASE_URL}/tripupdates",
+        "schema_file": "trip_update.avsc",
+        "flatten": _flatten_trip_update,
+        "key_field": "trip_id",
+        "interval": _realtime_interval,  # adaptive
+    },
+    "at.service_alerts": {
+        "url": f"{AT_BASE_URL}/servicealerts",
+        "schema_file": "service_alert.avsc",
+        "flatten": _flatten_service_alert,
+        "key_field": "id",
+        "interval": lambda: POLL_ALERTS,  # fixed 5 min
+    },
 }
 
 
@@ -150,13 +144,13 @@ def main():
     string_serializer = StringSerializer("utf_8")
     producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
 
-    # build serializers from .avsc files
     serializers = {}
     for topic, cfg in FEEDS.items():
         schema_str = _load_schema(cfg["schema_file"])
         serializers[topic] = AvroSerializer(sr_client, schema_str)
 
-    print(f"Starting AT producer → {len(FEEDS)} feeds, peak={POLL_PEAK}s / shoulder={POLL_SHOULDER}s / offpeak={POLL_OFFPEAK}s")
+    print(f"Starting AT producer → {len(FEEDS)} feeds, "
+          f"peak={POLL_PEAK}s / shoulder={POLL_SHOULDER}s / offpeak={POLL_OFFPEAK}s / alerts={POLL_ALERTS}s")
 
     _running = True
 
@@ -168,14 +162,22 @@ def main():
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
 
+    # per-feed last-poll tracking — poll all on first tick
+    last_poll = {topic: 0.0 for topic in FEEDS}
+
     while _running:
+        now = time.monotonic()
+        polled_any = False
+
         for topic, cfg in FEEDS.items():
+            interval = cfg["interval"]()
+            if now - last_poll[topic] < interval:
+                continue
+
             try:
                 entities = fetch_entities(cfg["url"])
-                flatten_fn = FLATTEN_FNS[cfg["flatten"]]
-
                 for entity in entities:
-                    record = flatten_fn(entity)
+                    record = cfg["flatten"](entity)
                     producer.produce(
                         topic=topic,
                         key=string_serializer(record[cfg["key_field"]]),
@@ -185,17 +187,25 @@ def main():
                         ),
                         on_delivery=delivery_report,
                     )
-
-                producer.flush()
                 print(f"  {topic}: {len(entities)} messages")
-
+                polled_any = True
             except Exception as e:
                 print(f"  {topic}: ERROR {e}")
 
+            last_poll[topic] = time.monotonic()
+
+        if polled_any:
+            producer.flush()
+
         if _running:
-            interval = _poll_interval()
-            print(f"  next poll in {interval}s")
-            time.sleep(interval)
+            # sleep until the next feed is due
+            now = time.monotonic()
+            next_due = min(
+                last_poll[t] + cfg["interval"]() - now
+                for t, cfg in FEEDS.items()
+            )
+            sleep_for = max(1, next_due)
+            time.sleep(sleep_for)
 
     producer.flush()
     print("Producer stopped cleanly")

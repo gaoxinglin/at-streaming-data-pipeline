@@ -5,7 +5,7 @@ import requests
 from dotenv import load_dotenv
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.avro.functions import from_avro
-from pyspark.sql.functions import col, current_timestamp, expr, lit, when, from_unixtime
+from pyspark.sql.functions import base64, col, current_timestamp, expr, from_unixtime
 from pyspark.sql.functions import uuid as spark_uuid
 
 
@@ -29,7 +29,7 @@ def enrich_vehicle_positions(df: DataFrame) -> DataFrame:
         "congestion_level",
         "occupancy_status",
         "_raw_payload",
-        from_unixtime("ts_raw").cast("date").alias("event_date"),
+        from_unixtime("timestamp").cast("date").alias("event_date"),
     )
 
 
@@ -47,7 +47,7 @@ def enrich_trip_updates(df: DataFrame) -> DataFrame:
         from_unixtime("timestamp").cast("timestamp").alias("timestamp"),
         "is_deleted",
         "_raw_payload",
-        from_unixtime("ts_raw").cast("date").alias("event_date"),
+        from_unixtime("timestamp").cast("date").alias("event_date"),
     )
 
 
@@ -65,7 +65,7 @@ def enrich_service_alerts(df: DataFrame) -> DataFrame:
         from_unixtime("active_period_end").cast("timestamp").alias("active_period_end"),
         from_unixtime("timestamp").cast("timestamp").alias("timestamp"),
         "_raw_payload",
-        from_unixtime("ts_raw").cast("date").alias("event_date"),
+        from_unixtime("timestamp").cast("date").alias("event_date"),
     )
 
 
@@ -150,19 +150,17 @@ if __name__ == "__main__":
             .load()
         )
 
-        # deserialise avro, keep raw payload for debugging
+        # deserialise avro, keep raw payload as base64 for debugging
         parsed = raw.select(
             from_avro(expr("substring(value, 6)"), schemas[topic]).alias("data"),
-            col("value").cast("string").alias("_raw_payload"),
+            base64(col("value")).alias("_raw_payload"),
             col("timestamp").alias("kafka_timestamp"),
         )
 
         watermarked = parsed.withWatermark("kafka_timestamp", "10 minutes")
 
-        # flatten avro struct + keep ts_raw for event_date derivation
         flat = watermarked.select(
             *[col(c) for c in cfg["flatten"]],
-            col("data.timestamp").alias("ts_raw"),
             "_raw_payload",
         )
 

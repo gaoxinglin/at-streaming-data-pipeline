@@ -17,13 +17,20 @@ AT_API_KEY = os.environ["AT_API_KEY"]
 AT_BASE_URL = os.getenv("AT_BASE_URL", "https://api.at.govt.nz/realtime/legacy")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
-POLL_PEAK = int(os.getenv("POLL_INTERVAL_PEAK", "40"))       # 6:00-21:00
-POLL_OFFPEAK = int(os.getenv("POLL_INTERVAL_OFFPEAK", "120"))  # 21:00-6:00
+POLL_PEAK = int(os.getenv("POLL_INTERVAL_PEAK", "30"))           # 07-10, 15-19
+POLL_SHOULDER = int(os.getenv("POLL_INTERVAL_SHOULDER", "90"))   # 06-07, 10-15, 19-22
+POLL_OFFPEAK = int(os.getenv("POLL_INTERVAL_OFFPEAK", "300"))   # 22-06
 
 
 def _poll_interval():
+    """3-tier adaptive polling based on Auckland transit demand patterns."""
     hour = datetime.now().hour
-    return POLL_PEAK if 6 <= hour < 21 else POLL_OFFPEAK
+    if (7 <= hour < 10) or (15 <= hour < 19):
+        return POLL_PEAK       # rush hour — max resolution for Q2/Q3
+    elif (22 <= hour or hour < 6):
+        return POLL_OFFPEAK    # overnight — maintain continuity, minimal cost
+    else:
+        return POLL_SHOULDER   # shoulder — moderate resolution
 
 SCHEMAS_DIR = os.path.join(os.path.dirname(__file__), "schemas")
 
@@ -149,7 +156,7 @@ def main():
         schema_str = _load_schema(cfg["schema_file"])
         serializers[topic] = AvroSerializer(sr_client, schema_str)
 
-    print(f"Starting AT producer → {len(FEEDS)} feeds, peak={POLL_PEAK}s / offpeak={POLL_OFFPEAK}s")
+    print(f"Starting AT producer → {len(FEEDS)} feeds, peak={POLL_PEAK}s / shoulder={POLL_SHOULDER}s / offpeak={POLL_OFFPEAK}s")
 
     _running = True
 

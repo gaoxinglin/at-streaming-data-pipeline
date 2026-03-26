@@ -12,6 +12,9 @@ dependencies = [
     "dbt-duckdb>=1.7.0",
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
 [dependency-groups]
 dev = [
     "black>=24.0.0",

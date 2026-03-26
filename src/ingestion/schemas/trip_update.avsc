@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "TripUpdate",
+  "namespace": "nz.at.gtfsrt",
+  "doc": "AT legacy endpoint returns trip-level delay (flat int), not per-stop arrival_delay/departure_delay",
+  "fields": [
+    {"name": "id", "type": "string"},
+    {"name": "trip_id", "type": "string"},
+    {"name": "route_id", "type": "string"},
+    {"name": "direction_id", "type": ["null", "int"], "default": null},
+    {"name": "start_time", "type": ["null", "string"], "default": null, "doc": "Scheduled start HH:MM:SS"},
+    {"name": "start_date", "type": ["null", "string"], "default": null, "doc": "YYYYMMDD"},
+    {"name": "schedule_relationship", "type": ["null", "int"], "default": null},
+    {"name": "delay", "type": "int", "doc": "Trip-level delay in seconds (from AT legacy endpoint)"},
+    {"name": "timestamp", "type": "long", "doc": "Unix epoch seconds"},
+    {"name": "is_deleted", "type": "boolean", "default": false}
+  ]
+}

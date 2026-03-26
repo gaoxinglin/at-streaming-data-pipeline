@@ -1,0 +1,20 @@
+{
+  "type": "record",
+  "name": "VehiclePosition",
+  "namespace": "nz.at.gtfsrt",
+  "fields": [
+    {"name": "vehicle_id", "type": "string"},
+    {"name": "trip_id", "type": "string"},
+    {"name": "route_id", "type": "string"},
+    {"name": "latitude", "type": "double"},
+    {"name": "longitude", "type": "double"},
+    {"name": "bearing", "type": ["null", "float"], "default": null},
+    {"name": "speed", "type": ["null", "float"], "default": null},
+    {"name": "current_stop_sequence", "type": ["null", "int"], "default": null},
+    {"name": "stop_id", "type": ["null", "string"], "default": null},
+    {"name": "current_status", "type": ["null", "string"], "default": null},
+    {"name": "congestion_level", "type": ["null", "string"], "default": null},
+    {"name": "occupancy_status", "type": ["null", "string"], "default": null},
+    {"name": "timestamp", "type": "long"}
+  ]
+}

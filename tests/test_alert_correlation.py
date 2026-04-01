@@ -32,8 +32,7 @@ def _alert_schema():
         StructField("cause", StringType()),
         StructField("effect", StringType()),
         StructField("header_text", StringType()),
-        StructField("event_time", TimestampType()),
-        StructField("kafka_ts", TimestampType()),
+        StructField("event_ts", TimestampType()),
     ])
 
 
@@ -44,8 +43,7 @@ def _vp_schema():
         StructField("latitude", DoubleType()),
         StructField("longitude", DoubleType()),
         StructField("speed", FloatType()),
-        StructField("event_time", TimestampType()),
-        StructField("kafka_ts", TimestampType()),
+        StructField("event_ts", TimestampType()),
     ])
 
 
@@ -54,14 +52,15 @@ def _tu_schema():
         StructField("trip_id", StringType()),
         StructField("route_id", StringType()),
         StructField("delay", IntegerType()),
-        StructField("event_time", TimestampType()),
-        StructField("kafka_ts", TimestampType()),
+        StructField("event_ts", TimestampType()),
     ])
 
 
 # --- helpers ---
 
 T0 = datetime(2026, 3, 27, 10, 0, 0)
+# T_30S is within 60s window; T5 is 5 min away (outside 60s window)
+T_30S = datetime(2026, 3, 27, 10, 0, 30)
 T5 = datetime(2026, 3, 27, 10, 5, 0)
 
 
@@ -69,22 +68,22 @@ def _make_alert(spark, route_id="NX1-203", alert_id="A1", time=T0):
     return spark.createDataFrame([{
         "alert_id": alert_id, "route_id": route_id,
         "cause": "CONSTRUCTION", "effect": "DETOUR",
-        "header_text": "Road works", "event_time": time, "kafka_ts": time,
+        "header_text": "Road works", "event_ts": time,
     }], schema=_alert_schema())
 
 
-def _make_vp(spark, route_id="NX1-203", vehicle_id="V1", time=T5):
+def _make_vp(spark, route_id="NX1-203", vehicle_id="V1", time=T_30S):
     return spark.createDataFrame([{
         "vehicle_id": vehicle_id, "route_id": route_id,
         "latitude": -36.84, "longitude": 174.76, "speed": 25.0,
-        "event_time": time, "kafka_ts": time,
+        "event_ts": time,
     }], schema=_vp_schema())
 
 
-def _make_tu(spark, route_id="NX1-203", trip_id="T100", delay=120, time=T5):
+def _make_tu(spark, route_id="NX1-203", trip_id="T100", delay=120, time=T_30S):
     return spark.createDataFrame([{
         "trip_id": trip_id, "route_id": route_id,
-        "delay": delay, "event_time": time, "kafka_ts": time,
+        "delay": delay, "event_ts": time,
     }], schema=_tu_schema())
 
 
@@ -110,10 +109,10 @@ def test_different_route_no_join(spark):
 
 
 def test_outside_time_window_no_join(spark):
-    """Events >30 min apart should not join."""
+    """Events >60s apart should not join (JOIN_WINDOW = 60 seconds)."""
     result = correlate_alerts_with_positions(
         _make_alert(spark, time=datetime(2026, 3, 27, 10, 0, 0)),
-        _make_vp(spark, time=datetime(2026, 3, 27, 11, 0, 0)))
+        _make_vp(spark, time=datetime(2026, 3, 27, 10, 2, 0)))
     assert result.count() == 0
 
 
@@ -121,9 +120,9 @@ def test_multiple_vehicles_on_route(spark):
     """Multiple vehicles on affected route should all be tagged."""
     positions = spark.createDataFrame([
         {"vehicle_id": "V1", "route_id": "NX1-203", "latitude": -36.84,
-         "longitude": 174.76, "speed": 20.0, "event_time": T5, "kafka_ts": T5},
+         "longitude": 174.76, "speed": 20.0, "event_ts": T_30S},
         {"vehicle_id": "V2", "route_id": "NX1-203", "latitude": -36.85,
-         "longitude": 174.77, "speed": 30.0, "event_time": T5, "kafka_ts": T5},
+         "longitude": 174.77, "speed": 30.0, "event_ts": T_30S},
     ], schema=_vp_schema())
     result = correlate_alerts_with_positions(_make_alert(spark), positions)
     assert result.count() == 2
@@ -136,7 +135,7 @@ def test_correlation_output_columns(spark):
         _make_alert(spark), _make_vp(spark))
     expected = {"alert_id", "route_id", "cause", "effect", "header_text",
                 "vehicle_id", "latitude", "longitude", "speed",
-                "alert_time", "vehicle_time", "kafka_ts"}
+                "alert_time", "vehicle_time", "event_ts"}
     assert set(result.columns) == expected
 
 

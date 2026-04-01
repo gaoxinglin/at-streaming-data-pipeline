@@ -6,10 +6,11 @@ routes and enrich with trip_update delay info. Chained stream-stream join:
   service_alerts ⋈ vehicle_positions ⋈ trip_updates  (on route_id + time window)
 
 Both joins are INNER because Spark only propagates watermarks through inner
-joins. A left outer join on the second leg would require the first join's
-output to carry watermark info on derived columns, which Spark doesn't support.
-In practice, the inner join is fine: we only emit correlations when all three
-streams have matching data — which is the interesting case anyway.
+joins. In practice, the inner join is fine: we only emit correlations when
+all three streams have matching data — which is the interesting case anyway.
+
+Network-wide alerts (route_id = NULL) are passed through directly to the
+alerts topic without vehicle/trip correlation (PRD edge case).
 """
 
 import os
@@ -20,15 +21,21 @@ from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    col, expr, from_unixtime, struct, to_json,
+    col, current_timestamp, expr, from_unixtime, lit, struct, to_json,
 )
 
 
-# time window for stream-stream join — how far apart two events can be
-# and still be considered related.
-JOIN_WINDOW = "30 minutes"
+# PRD §Threshold Rationale: Q4 temporal window = 60s.
+# Matches Q1's latency SLA; alert correlation should happen within the same cycle.
+JOIN_WINDOW = "60 seconds"
 
-WATERMARK_DELAY = "10 minutes"
+# PRD §Edge Cases: Differentiated watermarks to handle data skew.
+# Service alerts are sparse (~tens/day) — watermark advances slowly.
+# Vehicle positions are dense (~thousands/min) — tighter watermark prevents
+# unbounded state accumulation.
+WATERMARK_ALERTS = "10 minutes"
+WATERMARK_POSITIONS = "2 minutes"
+WATERMARK_TRIP_UPDATES = "10 minutes"
 
 
 # --- join logic (importable for testing) ---
@@ -39,17 +46,17 @@ def correlate_alerts_with_positions(
     """
     Join service_alerts with vehicle_positions on route_id within a time window.
 
-    Both DataFrames must have: route_id, event_time (timestamp).
-    Watermark column (kafka_ts) is carried through for chained joins.
+    Both DataFrames must have: route_id, event_ts (timestamp).
+    Watermark column (event_ts) is carried through for chained joins.
     """
     return (
         alerts.alias("a")
         .join(
             positions.alias("v"),
             (col("a.route_id") == col("v.route_id"))
-            & (col("v.event_time").between(
-                col("a.event_time") - expr(f"interval {JOIN_WINDOW}"),
-                col("a.event_time") + expr(f"interval {JOIN_WINDOW}"),
+            & (col("v.event_ts").between(
+                col("a.event_ts") - expr(f"interval {JOIN_WINDOW}"),
+                col("a.event_ts") + expr(f"interval {JOIN_WINDOW}"),
             )),
             "inner",
         )
@@ -63,10 +70,10 @@ def correlate_alerts_with_positions(
             col("v.latitude"),
             col("v.longitude"),
             col("v.speed"),
-            col("a.event_time").alias("alert_time"),
-            col("v.event_time").alias("vehicle_time"),
-            # carry watermarked kafka_ts through for second join
-            col("v.kafka_ts").alias("kafka_ts"),
+            col("a.event_ts").alias("alert_time"),
+            col("v.event_ts").alias("vehicle_time"),
+            # carry watermarked event_ts through for second join
+            col("v.event_ts").alias("event_ts"),
         )
     )
 
@@ -78,7 +85,7 @@ def enrich_with_trip_updates(
     Enrich alert-vehicle correlations with delay info from trip_updates.
 
     Inner join — only emits when all three streams have matching data.
-    Uses kafka_ts (watermarked) for the time-range condition so Spark
+    Uses event_ts (watermarked) for the time-range condition so Spark
     can properly bound state and clean up old entries.
     """
     return (
@@ -86,9 +93,9 @@ def enrich_with_trip_updates(
         .join(
             trip_updates.alias("t"),
             (col("c.route_id") == col("t.route_id"))
-            & (col("t.kafka_ts").between(
-                col("c.kafka_ts") - expr(f"interval {JOIN_WINDOW}"),
-                col("c.kafka_ts") + expr(f"interval {JOIN_WINDOW}"),
+            & (col("t.event_ts").between(
+                col("c.event_ts") - expr(f"interval {JOIN_WINDOW}"),
+                col("c.event_ts") + expr(f"interval {JOIN_WINDOW}"),
             )),
             "inner",
         )
@@ -106,7 +113,7 @@ def enrich_with_trip_updates(
             "c.vehicle_time",
             col("t.trip_id"),
             col("t.delay"),
-            col("t.event_time").alias("trip_update_time"),
+            col("t.event_ts").alias("trip_update_time"),
         )
     )
 
@@ -124,7 +131,9 @@ if __name__ == "__main__":
     KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
     CHECKPOINT_BASE = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints")
-    SINK_TOPIC = "at.alert_correlations"
+    OUTPUT_PATH = os.getenv("OUTPUT_PATH", "/tmp/bronze")
+    OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "parquet")
+    SINK_TOPIC = "at.alerts"
 
     spark = (
         SparkSession.builder
@@ -162,70 +171,149 @@ if __name__ == "__main__":
             col("timestamp").alias("kafka_ts"),
         )
 
-    # --- three streams, all watermarked on kafka_ts ---
+    # --- three streams, watermarked on event_ts (business time) ---
+    # PRD: "event_ts is the watermark column for all streaming queries"
+
     sa_raw = parse_avro(read_stream("at.service_alerts"), "at.service_alerts")
+
+    # Alerts WITH route_id → join pipeline
     alerts = (
         sa_raw
-        .withWatermark("kafka_ts", WATERMARK_DELAY)
         .select(
             col("data.id").alias("alert_id"),
             col("data.route_id").alias("route_id"),
             col("data.cause").alias("cause"),
             col("data.effect").alias("effect"),
             col("data.header_text").alias("header_text"),
-            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_time"),
-            "kafka_ts",
+            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_ts"),
         )
         .filter(col("route_id").isNotNull())
+        .withWatermark("event_ts", WATERMARK_ALERTS)
+        # PRD edge case: deduplicate by (alert_id, route_id) to prevent
+        # cartesian explosion from alert storms.
+        .dropDuplicatesWithinWatermark(["alert_id", "route_id"])
+    )
+
+    # Alerts WITHOUT route_id → pass through directly (network-wide alerts)
+    # PRD: "Network-wide alerts are passed through to at.alerts topic
+    # directly without vehicle/trip correlation."
+    sa_raw_passthrough = parse_avro(read_stream("at.service_alerts"), "at.service_alerts")
+    network_alerts = (
+        sa_raw_passthrough
+        .select(
+            col("data.id").alias("alert_id"),
+            col("data.route_id").alias("route_id"),
+            col("data.cause").alias("cause"),
+            col("data.effect").alias("effect"),
+            col("data.header_text").alias("header_text"),
+            col("data.description_text").alias("description_text"),
+            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_ts"),
+        )
+        .filter(col("route_id").isNull())
+        .withWatermark("event_ts", WATERMARK_ALERTS)
     )
 
     vp_raw = parse_avro(read_stream("at.vehicle_positions"), "at.vehicle_positions")
     positions = (
         vp_raw
-        .withWatermark("kafka_ts", WATERMARK_DELAY)
         .select(
             col("data.vehicle_id").alias("vehicle_id"),
             col("data.route_id").alias("route_id"),
             col("data.latitude").alias("latitude"),
             col("data.longitude").alias("longitude"),
             col("data.speed").alias("speed"),
-            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_time"),
-            "kafka_ts",
+            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_ts"),
         )
         .filter((col("route_id").isNotNull()) & (col("route_id") != ""))
+        .withWatermark("event_ts", WATERMARK_POSITIONS)
     )
 
     tu_raw = parse_avro(read_stream("at.trip_updates"), "at.trip_updates")
     trip_updates = (
         tu_raw
-        .withWatermark("kafka_ts", WATERMARK_DELAY)
         .select(
             col("data.trip_id").alias("trip_id"),
             col("data.route_id").alias("route_id"),
             col("data.delay").alias("delay"),
-            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_time"),
-            "kafka_ts",
+            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_ts"),
         )
         .filter((col("route_id").isNotNull()) & (col("route_id") != ""))
+        .withWatermark("event_ts", WATERMARK_TRIP_UPDATES)
     )
 
     # --- chained 3-stream join ---
     correlated = correlate_alerts_with_positions(alerts, positions)
     enriched = enrich_with_trip_updates(correlated, trip_updates)
-    kafka_ready = format_for_kafka(enriched)
+
+    # --- foreachBatch: write to both Kafka and Bronze ---
+
+    def write_correlation_batch(batch_df, batch_id):
+        """Write each micro-batch to Kafka (at.alerts) and Bronze table."""
+        if batch_df.isEmpty():
+            return
+
+        batch_df.persist()
+
+        try:
+            # 1. Write to Kafka (at.alerts)
+            kafka_ready = format_for_kafka(batch_df)
+            (
+                kafka_ready.write
+                .format("kafka")
+                .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
+                .option("topic", SINK_TOPIC)
+                .save()
+            )
+
+            # 2. Write to Bronze table (bronze.alert_correlations)
+            bronze_df = batch_df.withColumn("detected_at", current_timestamp())
+            (
+                bronze_df.write
+                .format(OUTPUT_FORMAT)
+                .mode("append")
+                .save(f"{OUTPUT_PATH}/alert_correlations")
+            )
+        finally:
+            batch_df.unpersist()
 
     query = (
-        kafka_ready.writeStream
-        .format("kafka")
-        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-        .option("topic", SINK_TOPIC)
+        enriched.writeStream
+        .foreachBatch(write_correlation_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/alert_correlations")
         .outputMode("append")
         .queryName("alert_correlations")
         .start()
     )
 
+    # --- pass-through query for network-wide alerts (no route_id) ---
+    network_query = (
+        network_alerts
+        .select(
+            lit("network_alert").cast("string").alias("key"),
+            to_json(struct(
+                lit("network_alert").alias("alert_type"),
+                col("alert_id"),
+                col("cause"),
+                col("effect"),
+                col("header_text"),
+                col("description_text"),
+                col("event_ts"),
+                current_timestamp().alias("detected_at"),
+            )).alias("value"),
+        )
+        .writeStream
+        .format("kafka")
+        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
+        .option("topic", SINK_TOPIC)
+        .option("checkpointLocation", f"{CHECKPOINT_BASE}/network_alerts_passthrough")
+        .outputMode("append")
+        .queryName("network_alerts_passthrough")
+        .start()
+    )
+
     print(f"Alert correlation job started — 3-stream join, window={JOIN_WINDOW}")
+    print(f"  Watermarks: alerts={WATERMARK_ALERTS}, positions={WATERMARK_POSITIONS}, "
+          f"trip_updates={WATERMARK_TRIP_UPDATES}")
 
     _shutdown = False
 
@@ -241,6 +329,7 @@ if __name__ == "__main__":
     while query.isActive:
         if _shutdown:
             query.stop()
+            network_query.stop()
             break
         progress = query.lastProgress
         if progress and progress.get("batchId", -1) > last_batch:

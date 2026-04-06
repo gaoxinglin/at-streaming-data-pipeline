@@ -1,6 +1,5 @@
 """Test enrichment logic using PySpark batch mode — no Kafka needed."""
 import pytest
-from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     StructType, StructField, StringType, DoubleType,
     FloatType, LongType, BooleanType, IntegerType,
@@ -11,14 +10,6 @@ from src.streaming.bronze_ingestion import (
     enrich_trip_updates,
     enrich_service_alerts,
 )
-
-
-@pytest.fixture(scope="module")
-def spark():
-    s = SparkSession.builder.appName("test").master("local[1]").getOrCreate()
-    s.sparkContext.setLogLevel("OFF")
-    yield s
-    s.stop()
 
 
 # -- vehicle positions --
@@ -108,6 +99,12 @@ def _make_tu(spark, **overrides):
     }
     defaults.update(overrides)
     return spark.createDataFrame([tuple(defaults.values())], _tu_schema())
+
+
+def test_tu_source_id_preserved(spark):
+    """AT message id should be preserved as source_id for traceability."""
+    result = enrich_trip_updates(_make_tu(spark)).collect()[0]
+    assert result["source_id"] == "tu1"
 
 
 def test_tu_delay_preserved(spark):

@@ -1,20 +1,11 @@
 """Unit tests for Q1 delay alert detection logic."""
 
 import pytest
-from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     IntegerType, LongType, StringType, StructField, StructType, BooleanType,
 )
 
 from src.streaming.delay_alert_job import detect_delays, DELAY_THRESHOLD
-
-
-@pytest.fixture(scope="module")
-def spark():
-    s = SparkSession.builder.master("local[1]").appName("test").getOrCreate()
-    s.sparkContext.setLogLevel("WARN")
-    yield s
-    s.stop()
 
 
 def _tu_schema():

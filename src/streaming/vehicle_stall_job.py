@@ -7,7 +7,6 @@ readings using applyInPandasWithState.
 
 import math
 import os
-import signal
 from typing import Iterator
 
 import pandas as pd
@@ -15,7 +14,9 @@ import requests
 from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
-from pyspark.sql.functions import col, expr, from_unixtime, struct, to_json
+from pyspark.sql.functions import (
+    col, current_timestamp, expr, from_unixtime, struct, to_date, to_json,
+)
 from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
 from pyspark.sql.types import (
     DoubleType, IntegerType, LongType, StringType, StructField, StructType,
@@ -159,6 +160,8 @@ if __name__ == "__main__":
     KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
     CHECKPOINT_BASE = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints")
+    OUTPUT_PATH = os.getenv("OUTPUT_PATH", "/tmp/bronze")
+    OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "parquet")
     SOURCE_TOPIC = "at.vehicle_positions"
     SINK_TOPIC = "at.alerts"
 
@@ -173,7 +176,7 @@ if __name__ == "__main__":
     spark.sparkContext.setLogLevel("WARN")
 
     # fetch avro schema from SR
-    resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest")
+    resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest", timeout=10)
     resp.raise_for_status()
     avro_schema = resp.json()["schema"]
 
@@ -188,10 +191,12 @@ if __name__ == "__main__":
 
     parsed = raw.select(
         from_avro(expr("substring(value, 6)"), avro_schema).alias("data"),
-        col("timestamp").alias("kafka_timestamp"),
     )
 
-    flat = parsed.withWatermark("kafka_timestamp", "10 minutes").select(
+    # No watermark — applyInPandasWithState uses ProcessingTimeTimeout,
+    # which doesn't depend on event-time watermark. State is cleared when
+    # a vehicle stops reporting for 30 min (wall clock).
+    flat = parsed.select(
         col("data.vehicle_id").alias("vehicle_id"),
         col("data.route_id").alias("route_id"),
         col("data.latitude").alias("latitude"),
@@ -216,13 +221,44 @@ if __name__ == "__main__":
         timeoutConf=GroupStateTimeout.ProcessingTimeTimeout,
     )
 
-    kafka_ready = format_for_kafka(stall_events)
+    # --- foreachBatch: write to Kafka + Bronze ---
+
+    def write_batch(batch_df, batch_id):
+        if batch_df.isEmpty():
+            return
+
+        batch_df.persist()
+
+        try:
+            # 1. Write to Kafka (at.alerts)
+            kafka_ready = format_for_kafka(batch_df)
+            (
+                kafka_ready.write
+                .format("kafka")
+                .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
+                .option("topic", SINK_TOPIC)
+                .save()
+            )
+
+            # 2. Write to Bronze table (bronze.stall_events)
+            bronze_df = batch_df.withColumn(
+                "detected_at", current_timestamp()
+            ).withColumn(
+                "event_date", to_date(from_unixtime(col("stall_detected_ts")))
+            )
+            (
+                bronze_df.write
+                .format(OUTPUT_FORMAT)
+                .mode("append")
+                .partitionBy("event_date")
+                .save(f"{OUTPUT_PATH}/stall_events")
+            )
+        finally:
+            batch_df.unpersist()
 
     query = (
-        kafka_ready.writeStream
-        .format("kafka")
-        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-        .option("topic", SINK_TOPIC)
+        stall_events.writeStream
+        .foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/vehicle_stalls")
         .outputMode("update")
         .queryName("vehicle_stalls")
@@ -232,27 +268,5 @@ if __name__ == "__main__":
     print(f"Vehicle stall detection started — "
           f"radius={STALL_RADIUS_M}m, threshold={STALL_THRESHOLD} readings, timeout={STATE_TIMEOUT}")
 
-    _shutdown = False
-
-    def _stop(sig, frame):
-        global _shutdown
-        print(f"\nCaught signal {sig}, shutting down...")
-        _shutdown = True
-
-    signal.signal(signal.SIGINT, _stop)
-    signal.signal(signal.SIGTERM, _stop)
-
-    last_batch = -1
-    while query.isActive:
-        if _shutdown:
-            query.stop()
-            break
-        progress = query.lastProgress
-        if progress and progress.get("batchId", -1) > last_batch:
-            last_batch = progress["batchId"]
-            rows = progress.get("numInputRows", 0)
-            if rows > 0:
-                print(f"  batch {last_batch}: {rows} positions processed")
-        spark.streams.awaitAnyTermination(timeout=1)
-
-    print("done")
+    from src.streaming._shutdown import run_until_shutdown
+    run_until_shutdown(spark, query, job_label="vehicle_stalls")

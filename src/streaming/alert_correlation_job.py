@@ -3,7 +3,8 @@ Q4: Service alert correlation — multi-stream join.
 
 When a service_alert is published, tag all live vehicle_positions on affected
 routes and enrich with trip_update delay info. Chained stream-stream join:
-  service_alerts ⋈ vehicle_positions ⋈ trip_updates  (on route_id + time window)
+  (service_alerts ⋈ vehicle_positions) on route_id
+  then ⋈ trip_updates on trip_id  (vehicle's actual trip)
 
 Both joins are INNER because Spark only propagates watermarks through inner
 joins. In practice, the inner join is fine: we only emit correlations when
@@ -14,14 +15,13 @@ alerts topic without vehicle/trip correlation (PRD edge case).
 """
 
 import os
-import signal
 
 import requests
 from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    col, current_timestamp, expr, from_unixtime, lit, struct, to_json,
+    col, current_timestamp, expr, from_unixtime, lit, struct, to_date, to_json,
 )
 
 
@@ -47,7 +47,8 @@ def correlate_alerts_with_positions(
     Join service_alerts with vehicle_positions on route_id within a time window.
 
     Both DataFrames must have: route_id, event_ts (timestamp).
-    Watermark column (event_ts) is carried through for chained joins.
+    Positions must also have trip_id (carried through for the second join
+    so it can narrow on trip_id instead of route_id, avoiding cartesian blow-up).
     """
     return (
         alerts.alias("a")
@@ -67,6 +68,7 @@ def correlate_alerts_with_positions(
             col("a.effect"),
             col("a.header_text"),
             col("v.vehicle_id"),
+            col("v.trip_id"),
             col("v.latitude"),
             col("v.longitude"),
             col("v.speed"),
@@ -84,15 +86,16 @@ def enrich_with_trip_updates(
     """
     Enrich alert-vehicle correlations with delay info from trip_updates.
 
-    Inner join — only emits when all three streams have matching data.
-    Uses event_ts (watermarked) for the time-range condition so Spark
-    can properly bound state and clean up old entries.
+    Inner join on trip_id (not route_id) — each vehicle is on exactly one
+    trip at a time, so this gives 1:1 enrichment instead of the N×M
+    cartesian that route_id would produce. Still uses event_ts time-range
+    condition so Spark can bound state and clean up old entries.
     """
     return (
         correlated.alias("c")
         .join(
             trip_updates.alias("t"),
-            (col("c.route_id") == col("t.route_id"))
+            (col("c.trip_id") == col("t.trip_id"))
             & (col("t.event_ts").between(
                 col("c.event_ts") - expr(f"interval {JOIN_WINDOW}"),
                 col("c.event_ts") + expr(f"interval {JOIN_WINDOW}"),
@@ -106,12 +109,12 @@ def enrich_with_trip_updates(
             "c.effect",
             "c.header_text",
             "c.vehicle_id",
+            "c.trip_id",
             "c.latitude",
             "c.longitude",
             "c.speed",
             "c.alert_time",
             "c.vehicle_time",
-            col("t.trip_id"),
             col("t.delay"),
             col("t.event_ts").alias("trip_update_time"),
         )
@@ -151,7 +154,7 @@ if __name__ == "__main__":
     topics = ["at.service_alerts", "at.vehicle_positions", "at.trip_updates"]
     schemas = {}
     for topic in topics:
-        resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest")
+        resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest", timeout=10)
         resp.raise_for_status()
         schemas[topic] = resp.json()["schema"]
 
@@ -174,19 +177,22 @@ if __name__ == "__main__":
     # --- three streams, watermarked on event_ts (business time) ---
     # PRD: "event_ts is the watermark column for all streaming queries"
 
+    # Single read for service_alerts — fork into route-specific and network-wide paths.
+    # Spark allows multiple writeStream queries from the same readStream DataFrame.
     sa_raw = parse_avro(read_stream("at.service_alerts"), "at.service_alerts")
+    sa_flat = sa_raw.select(
+        col("data.id").alias("alert_id"),
+        col("data.route_id").alias("route_id"),
+        col("data.cause").alias("cause"),
+        col("data.effect").alias("effect"),
+        col("data.header_text").alias("header_text"),
+        col("data.description_text").alias("description_text"),
+        from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_ts"),
+    )
 
     # Alerts WITH route_id → join pipeline
     alerts = (
-        sa_raw
-        .select(
-            col("data.id").alias("alert_id"),
-            col("data.route_id").alias("route_id"),
-            col("data.cause").alias("cause"),
-            col("data.effect").alias("effect"),
-            col("data.header_text").alias("header_text"),
-            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_ts"),
-        )
+        sa_flat
         .filter(col("route_id").isNotNull())
         .withWatermark("event_ts", WATERMARK_ALERTS)
         # PRD edge case: deduplicate by (alert_id, route_id) to prevent
@@ -197,18 +203,8 @@ if __name__ == "__main__":
     # Alerts WITHOUT route_id → pass through directly (network-wide alerts)
     # PRD: "Network-wide alerts are passed through to at.alerts topic
     # directly without vehicle/trip correlation."
-    sa_raw_passthrough = parse_avro(read_stream("at.service_alerts"), "at.service_alerts")
     network_alerts = (
-        sa_raw_passthrough
-        .select(
-            col("data.id").alias("alert_id"),
-            col("data.route_id").alias("route_id"),
-            col("data.cause").alias("cause"),
-            col("data.effect").alias("effect"),
-            col("data.header_text").alias("header_text"),
-            col("data.description_text").alias("description_text"),
-            from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_ts"),
-        )
+        sa_flat
         .filter(col("route_id").isNull())
         .withWatermark("event_ts", WATERMARK_ALERTS)
     )
@@ -218,6 +214,7 @@ if __name__ == "__main__":
         vp_raw
         .select(
             col("data.vehicle_id").alias("vehicle_id"),
+            col("data.trip_id").alias("trip_id"),
             col("data.route_id").alias("route_id"),
             col("data.latitude").alias("latitude"),
             col("data.longitude").alias("longitude"),
@@ -266,11 +263,16 @@ if __name__ == "__main__":
             )
 
             # 2. Write to Bronze table (bronze.alert_correlations)
-            bronze_df = batch_df.withColumn("detected_at", current_timestamp())
+            bronze_df = batch_df.withColumn(
+                "detected_at", current_timestamp()
+            ).withColumn(
+                "event_date", to_date(col("alert_time"))
+            )
             (
                 bronze_df.write
                 .format(OUTPUT_FORMAT)
                 .mode("append")
+                .partitionBy("event_date")
                 .save(f"{OUTPUT_PATH}/alert_correlations")
             )
         finally:
@@ -315,28 +317,5 @@ if __name__ == "__main__":
     print(f"  Watermarks: alerts={WATERMARK_ALERTS}, positions={WATERMARK_POSITIONS}, "
           f"trip_updates={WATERMARK_TRIP_UPDATES}")
 
-    _shutdown = False
-
-    def _stop(sig, frame):
-        global _shutdown
-        print(f"\nCaught signal {sig}, shutting down...")
-        _shutdown = True
-
-    signal.signal(signal.SIGINT, _stop)
-    signal.signal(signal.SIGTERM, _stop)
-
-    last_batch = -1
-    while query.isActive:
-        if _shutdown:
-            query.stop()
-            network_query.stop()
-            break
-        progress = query.lastProgress
-        if progress and progress.get("batchId", -1) > last_batch:
-            last_batch = progress["batchId"]
-            rows = progress.get("numInputRows", 0)
-            if rows > 0:
-                print(f"  batch {last_batch}: {rows} input rows across 3 streams")
-        spark.streams.awaitAnyTermination(timeout=1)
-
-    print("done")
+    from src.streaming._shutdown import run_until_shutdown
+    run_until_shutdown(spark, query, network_query, job_label="alert_correlation")

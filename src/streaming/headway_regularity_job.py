@@ -14,7 +14,6 @@ arrival times. We compute departure headway, not stop-level headway.
 """
 
 import os
-import signal
 
 import requests
 from dotenv import load_dotenv
@@ -156,7 +155,7 @@ if __name__ == "__main__":
     spark.sparkContext.setLogLevel("WARN")
 
     # fetch trip_update avro schema from SR
-    resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest")
+    resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest", timeout=10)
     resp.raise_for_status()
     avro_schema = resp.json()["schema"]
 
@@ -271,28 +270,5 @@ if __name__ == "__main__":
     print(f"Headway regularity job started — "
           f"window={WINDOW_DURATION}, slide={SLIDE_INTERVAL}, watermark={WATERMARK_DELAY}")
 
-    # graceful shutdown
-    _shutdown = False
-
-    def _stop(sig, frame):
-        global _shutdown
-        print(f"\nCaught signal {sig}, shutting down...")
-        _shutdown = True
-
-    signal.signal(signal.SIGINT, _stop)
-    signal.signal(signal.SIGTERM, _stop)
-
-    last_batch = -1
-    while query.isActive:
-        if _shutdown:
-            query.stop()
-            break
-        progress = query.lastProgress
-        if progress and progress.get("batchId", -1) > last_batch:
-            last_batch = progress["batchId"]
-            rows = progress.get("numInputRows", 0)
-            if rows > 0:
-                print(f"  batch {last_batch}: {rows} trip_updates processed")
-        spark.streams.awaitAnyTermination(timeout=1)
-
-    print("done")
+    from src.streaming._shutdown import run_until_shutdown
+    run_until_shutdown(spark, query, job_label="headway_regularity")

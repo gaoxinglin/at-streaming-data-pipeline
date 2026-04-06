@@ -3,7 +3,6 @@
 import pytest
 from datetime import datetime
 
-from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType, FloatType, IntegerType, StringType, StructField, StructType,
     TimestampType,
@@ -13,14 +12,6 @@ from src.streaming.alert_correlation_job import (
     correlate_alerts_with_positions,
     enrich_with_trip_updates,
 )
-
-
-@pytest.fixture(scope="module")
-def spark():
-    s = SparkSession.builder.master("local[1]").appName("test").getOrCreate()
-    s.sparkContext.setLogLevel("WARN")
-    yield s
-    s.stop()
 
 
 # --- schemas ---
@@ -39,6 +30,7 @@ def _alert_schema():
 def _vp_schema():
     return StructType([
         StructField("vehicle_id", StringType()),
+        StructField("trip_id", StringType()),
         StructField("route_id", StringType()),
         StructField("latitude", DoubleType()),
         StructField("longitude", DoubleType()),
@@ -72,9 +64,9 @@ def _make_alert(spark, route_id="NX1-203", alert_id="A1", time=T0):
     }], schema=_alert_schema())
 
 
-def _make_vp(spark, route_id="NX1-203", vehicle_id="V1", time=T_30S):
+def _make_vp(spark, route_id="NX1-203", vehicle_id="V1", trip_id="T100", time=T_30S):
     return spark.createDataFrame([{
-        "vehicle_id": vehicle_id, "route_id": route_id,
+        "vehicle_id": vehicle_id, "trip_id": trip_id, "route_id": route_id,
         "latitude": -36.84, "longitude": 174.76, "speed": 25.0,
         "event_ts": time,
     }], schema=_vp_schema())
@@ -119,9 +111,9 @@ def test_outside_time_window_no_join(spark):
 def test_multiple_vehicles_on_route(spark):
     """Multiple vehicles on affected route should all be tagged."""
     positions = spark.createDataFrame([
-        {"vehicle_id": "V1", "route_id": "NX1-203", "latitude": -36.84,
+        {"vehicle_id": "V1", "trip_id": "T100", "route_id": "NX1-203", "latitude": -36.84,
          "longitude": 174.76, "speed": 20.0, "event_ts": T_30S},
-        {"vehicle_id": "V2", "route_id": "NX1-203", "latitude": -36.85,
+        {"vehicle_id": "V2", "trip_id": "T200", "route_id": "NX1-203", "latitude": -36.85,
          "longitude": 174.77, "speed": 30.0, "event_ts": T_30S},
     ], schema=_vp_schema())
     result = correlate_alerts_with_positions(_make_alert(spark), positions)
@@ -134,7 +126,7 @@ def test_correlation_output_columns(spark):
     result = correlate_alerts_with_positions(
         _make_alert(spark), _make_vp(spark))
     expected = {"alert_id", "route_id", "cause", "effect", "header_text",
-                "vehicle_id", "latitude", "longitude", "speed",
+                "vehicle_id", "trip_id", "latitude", "longitude", "speed",
                 "alert_time", "vehicle_time", "event_ts"}
     assert set(result.columns) == expected
 
@@ -157,8 +149,9 @@ def test_no_matching_trip_no_output(spark):
     """Inner join: no matching trip_update means no output row."""
     correlated = correlate_alerts_with_positions(
         _make_alert(spark), _make_vp(spark))
+    # trip_id mismatch — vehicle is on T100 but trip_update is for T999
     enriched = enrich_with_trip_updates(
-        correlated, _make_tu(spark, route_id="OTHER-999"))
+        correlated, _make_tu(spark, trip_id="T999"))
     assert enriched.count() == 0
 
 
@@ -167,7 +160,7 @@ def test_enriched_output_columns(spark):
         _make_alert(spark), _make_vp(spark))
     enriched = enrich_with_trip_updates(correlated, _make_tu(spark))
     expected = {"alert_id", "route_id", "cause", "effect", "header_text",
-                "vehicle_id", "latitude", "longitude", "speed",
+                "vehicle_id", "trip_id", "latitude", "longitude", "speed",
                 "alert_time", "vehicle_time",
-                "trip_id", "delay", "trip_update_time"}
+                "delay", "trip_update_time"}
     assert set(enriched.columns) == expected

@@ -2,20 +2,11 @@
 
 import pytest
 from datetime import datetime
-from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     IntegerType, StringType, StructField, StructType, TimestampType,
 )
 
 from src.streaming.headway_regularity_job import compute_headway_regularity
-
-
-@pytest.fixture(scope="module")
-def spark():
-    s = SparkSession.builder.master("local[1]").appName("test").getOrCreate()
-    s.sparkContext.setLogLevel("WARN")
-    yield s
-    s.stop()
 
 
 def _vp_schema():

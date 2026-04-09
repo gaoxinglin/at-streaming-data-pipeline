@@ -98,7 +98,7 @@ def _flatten_service_alert(entity):
         "description_text": desc.get("translation", [{}])[0].get("text") if desc else None,
         "active_period_start": period.get("start"),
         "active_period_end": period.get("end"),
-        "timestamp": int(entity.get("timestamp", 0) or time.time()),
+        "timestamp": int(entity["timestamp"] if "timestamp" in entity else time.time()),
     }
 
 

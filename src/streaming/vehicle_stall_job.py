@@ -7,6 +7,7 @@ readings using applyInPandasWithState.
 
 import math
 import os
+import uuid
 from typing import Iterator
 
 import pandas as pd
@@ -30,12 +31,13 @@ STATE_TIMEOUT = "30 minutes"
 
 # schema for the stall events we emit
 STALL_EVENT_SCHEMA = StructType([
+    StructField("stall_id", StringType()),
     StructField("vehicle_id", StringType()),
     StructField("route_id", StringType()),
     StructField("latitude", DoubleType()),
     StructField("longitude", DoubleType()),
-    StructField("consecutive_count", IntegerType()),
-    StructField("stall_start_ts", LongType()),
+    StructField("reading_count", IntegerType()),
+    StructField("first_seen", TimestampType()),
     StructField("stall_detected_ts", LongType()),
 ])
 
@@ -126,12 +128,13 @@ def detect_stalls(
             # emit stall event when threshold reached or ongoing stall grows
             if count >= STALL_THRESHOLD and count > already_emitted:
                 events.append({
+                    "stall_id": str(uuid.uuid4()),
                     "vehicle_id": key[0],
                     "route_id": last_route,
                     "latitude": anchor_lat,
                     "longitude": anchor_lon,
-                    "consecutive_count": count,
-                    "stall_start_ts": first_ts,
+                    "reading_count": count,
+                    "first_seen": pd.Timestamp(first_ts, unit="s"),
                     "stall_detected_ts": ts,
                 })
                 already_emitted = count
@@ -261,6 +264,7 @@ if __name__ == "__main__":
         .foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/vehicle_stalls")
         .outputMode("update")
+        .trigger(processingTime="30 seconds")
         .queryName("vehicle_stalls")
         .start()
     )

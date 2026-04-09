@@ -9,6 +9,7 @@ from pyspark.sql.types import (
 )
 
 from src.streaming.alert_correlation_job import (
+    aggregate_for_bronze,
     correlate_alerts_with_positions,
     enrich_with_trip_updates,
 )
@@ -164,3 +165,41 @@ def test_enriched_output_columns(spark):
                 "alert_time", "vehicle_time",
                 "delay", "trip_update_time"}
     assert set(enriched.columns) == expected
+
+
+# --- bronze aggregation tests ---
+
+def test_aggregate_for_bronze_columns(spark):
+    """Bronze output should match PRD: aggregated per (alert_id, route_id)."""
+    correlated = correlate_alerts_with_positions(
+        _make_alert(spark), _make_vp(spark))
+    enriched = enrich_with_trip_updates(correlated, _make_tu(spark))
+    bronze = aggregate_for_bronze(enriched)
+    expected = {"correlation_id", "alert_id", "route_id",
+                "vehicles_affected", "trips_affected",
+                "avg_delay_at_time", "detected_at"}
+    assert set(bronze.columns) == expected
+
+
+def test_aggregate_for_bronze_counts(spark):
+    """Two vehicles on same alert/route → vehicles_affected=2, trips_affected=2."""
+    positions = spark.createDataFrame([
+        {"vehicle_id": "V1", "trip_id": "T100", "route_id": "NX1-203",
+         "latitude": -36.84, "longitude": 174.76, "speed": 20.0, "event_ts": T_30S},
+        {"vehicle_id": "V2", "trip_id": "T200", "route_id": "NX1-203",
+         "latitude": -36.85, "longitude": 174.77, "speed": 30.0, "event_ts": T_30S},
+    ], schema=_vp_schema())
+    trip_updates = spark.createDataFrame([
+        {"trip_id": "T100", "route_id": "NX1-203", "delay": 120, "event_ts": T_30S},
+        {"trip_id": "T200", "route_id": "NX1-203", "delay": 240, "event_ts": T_30S},
+    ], schema=_tu_schema())
+
+    correlated = correlate_alerts_with_positions(_make_alert(spark), positions)
+    enriched = enrich_with_trip_updates(correlated, trip_updates)
+    bronze = aggregate_for_bronze(enriched)
+
+    assert bronze.count() == 1
+    row = bronze.first()
+    assert row.vehicles_affected == 2
+    assert row.trips_affected == 2
+    assert row.avg_delay_at_time == pytest.approx(180.0)  # (120+240)/2

@@ -78,7 +78,7 @@ def test_severity_severe(spark):
 
 def test_alert_has_expected_columns(spark):
     df = detect_delays(_make_tu(spark, delay=600))
-    expected = {"alert_id", "trip_id", "route_id", "delay", "severity",
+    expected = {"event_id", "trip_id", "route_id", "delay", "severity",
                 "start_time", "start_date", "event_timestamp", "detected_at"}
     assert set(df.columns) == expected
 

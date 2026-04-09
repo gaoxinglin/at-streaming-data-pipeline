@@ -71,8 +71,9 @@ def test_stall_at_threshold():
     events = pd.concat(results, ignore_index=True)
     assert len(events) == 1
     assert events.iloc[0]["vehicle_id"] == "V1"
-    assert events.iloc[0]["consecutive_count"] == 3
-    assert events.iloc[0]["stall_start_ts"] == 1000
+    assert events.iloc[0]["reading_count"] == 3
+    assert events.iloc[0]["first_seen"] == pd.Timestamp(1000, unit="s")
+    assert events.iloc[0]["stall_id"] is not None
 
 
 def test_movement_resets_count():
@@ -101,8 +102,8 @@ def test_stall_with_prior_state():
     results = list(detect_stalls(("V1",), readings, state))
     events = pd.concat(results, ignore_index=True)
     assert len(events) == 1
-    assert events.iloc[0]["consecutive_count"] == 3
-    assert events.iloc[0]["stall_start_ts"] == 900  # from state
+    assert events.iloc[0]["reading_count"] == 3
+    assert events.iloc[0]["first_seen"] == pd.Timestamp(900, unit="s")
 
 
 def test_timeout_clears_state():
@@ -140,5 +141,5 @@ def test_ongoing_stall_emits_updates():
     events = pd.concat(results, ignore_index=True)
     # should get events at count 3, 4, 5
     assert len(events) == 3
-    counts = events["consecutive_count"].tolist()
+    counts = events["reading_count"].tolist()
     assert counts == [3, 4, 5]

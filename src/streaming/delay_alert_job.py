@@ -29,7 +29,7 @@ def detect_delays(df: DataFrame) -> DataFrame:
     return (
         df.filter(col("delay") > DELAY_THRESHOLD)
         .select(
-            spark_uuid().alias("alert_id"),
+            spark_uuid().alias("event_id"),
             "trip_id",
             "route_id",
             "delay",
@@ -142,6 +142,7 @@ if __name__ == "__main__":
         .foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/delay_alerts")
         .outputMode("append")
+        .trigger(processingTime="30 seconds")
         .queryName("delay_alerts")
         .start()
     )

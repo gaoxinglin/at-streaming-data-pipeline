@@ -263,6 +263,7 @@ if __name__ == "__main__":
         .outputMode("update")
         .foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/headway_metrics")
+        .trigger(processingTime="30 seconds")
         .queryName("headway_metrics")
         .start()
     )

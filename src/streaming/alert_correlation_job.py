@@ -21,8 +21,10 @@ from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    col, current_timestamp, expr, from_unixtime, lit, struct, to_date, to_json,
+    avg, col, countDistinct, current_timestamp, expr, from_unixtime, lit,
+    struct, to_date, to_json,
 )
+from pyspark.sql.functions import uuid as spark_uuid
 
 
 # PRD §Threshold Rationale: Q4 temporal window = 60s.
@@ -118,6 +120,20 @@ def enrich_with_trip_updates(
             col("t.delay"),
             col("t.event_ts").alias("trip_update_time"),
         )
+    )
+
+
+def aggregate_for_bronze(df: DataFrame) -> DataFrame:
+    """Aggregate detail rows into per-(alert, route) impact summaries for Bronze."""
+    return (
+        df.groupBy("alert_id", "route_id")
+        .agg(
+            countDistinct("vehicle_id").alias("vehicles_affected"),
+            countDistinct("trip_id").alias("trips_affected"),
+            avg("delay").cast("float").alias("avg_delay_at_time"),
+        )
+        .withColumn("correlation_id", spark_uuid())
+        .withColumn("detected_at", current_timestamp())
     )
 
 
@@ -263,10 +279,9 @@ if __name__ == "__main__":
             )
 
             # 2. Write to Bronze table (bronze.alert_correlations)
-            bronze_df = batch_df.withColumn(
-                "detected_at", current_timestamp()
-            ).withColumn(
-                "event_date", to_date(col("alert_time"))
+            # PRD: aggregated per (alert_id, route_id) — not detail rows
+            bronze_df = aggregate_for_bronze(batch_df).withColumn(
+                "event_date", to_date(current_timestamp())
             )
             (
                 bronze_df.write
@@ -283,6 +298,7 @@ if __name__ == "__main__":
         .foreachBatch(write_correlation_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/alert_correlations")
         .outputMode("append")
+        .trigger(processingTime="30 seconds")
         .queryName("alert_correlations")
         .start()
     )
@@ -309,6 +325,7 @@ if __name__ == "__main__":
         .option("topic", SINK_TOPIC)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/network_alerts_passthrough")
         .outputMode("append")
+        .trigger(processingTime="30 seconds")
         .queryName("network_alerts_passthrough")
         .start()
     )

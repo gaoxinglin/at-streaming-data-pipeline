@@ -172,6 +172,7 @@ if __name__ == "__main__":
             .option("checkpointLocation", f"{CHECKPOINT_BASE}/{table_name}")
             .partitionBy("event_date")
             .outputMode("append")
+            .trigger(processingTime="30 seconds")
             .queryName(table_name)
             .start()
         )

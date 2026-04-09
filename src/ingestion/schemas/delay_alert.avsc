@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "DelayAlert",
+  "namespace": "nz.at.gtfsrt",
+  "doc": "Emitted when trip delay exceeds 5 minutes",
+  "fields": [
+    {"name": "alert_id", "type": "string", "doc": "UUID generated at detection time"},
+    {"name": "trip_id", "type": "string"},
+    {"name": "route_id", "type": "string"},
+    {"name": "delay", "type": "int", "doc": "Delay in seconds from trip_update"},
+    {"name": "severity", "type": "string", "doc": "MODERATE (5-10min) / HIGH (10-20min) / SEVERE (20min+)"},
+    {"name": "start_time", "type": ["null", "string"], "default": null, "doc": "Scheduled departure HH:MM:SS"},
+    {"name": "start_date", "type": ["null", "string"], "default": null, "doc": "YYYYMMDD"},
+    {"name": "event_timestamp", "type": "long", "doc": "Original trip_update unix epoch"},
+    {"name": "detected_at", "type": "long", "doc": "When this alert was generated (unix epoch)"}
+  ]
+}

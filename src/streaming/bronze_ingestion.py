@@ -1,5 +1,4 @@
 import os
-import signal
 
 import requests
 from dotenv import load_dotenv
@@ -37,6 +36,7 @@ def enrich_trip_updates(df: DataFrame) -> DataFrame:
     return df.select(
         spark_uuid().alias("event_id"),
         current_timestamp().alias("ingestion_timestamp"),
+        col("id").alias("source_id"),
         "trip_id",
         "route_id",
         "direction_id",
@@ -116,6 +116,7 @@ if __name__ == "__main__":
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
     OUTPUT_BASE = os.getenv("BRONZE_OUTPUT_PATH", "/tmp/bronze")
     CHECKPOINT_BASE = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints")
+    OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "parquet")
     TOPICS = list(TOPIC_CONFIG.keys())
 
     spark = (
@@ -131,7 +132,7 @@ if __name__ == "__main__":
     # fetch schemas from SR
     schemas = {}
     for topic in TOPICS:
-        resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest")
+        resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest", timeout=10)
         resp.raise_for_status()
         schemas[topic] = resp.json()["schema"]
 
@@ -151,15 +152,13 @@ if __name__ == "__main__":
         )
 
         # deserialise avro, keep raw payload as base64 for debugging
+        # No watermark here — Bronze is append-only raw landing, never drops late data.
         parsed = raw.select(
             from_avro(expr("substring(value, 6)"), schemas[topic]).alias("data"),
             base64(col("value")).alias("_raw_payload"),
-            col("timestamp").alias("kafka_timestamp"),
         )
 
-        watermarked = parsed.withWatermark("kafka_timestamp", "10 minutes")
-
-        flat = watermarked.select(
+        flat = parsed.select(
             *[col(c) for c in cfg["flatten"]],
             "_raw_payload",
         )
@@ -168,7 +167,7 @@ if __name__ == "__main__":
 
         q = (
             enriched.writeStream
-            .format("parquet")
+            .format(OUTPUT_FORMAT)
             .option("path", f"{OUTPUT_BASE}/{table_name}")
             .option("checkpointLocation", f"{CHECKPOINT_BASE}/{table_name}")
             .partitionBy("event_date")
@@ -179,32 +178,5 @@ if __name__ == "__main__":
         queries[table_name] = q
         print(f"Started query: {table_name}")
 
-    # graceful shutdown
-    _shutdown = False
-
-    def _stop(sig, frame):
-        global _shutdown
-        print(f"\nCaught signal {sig}, shutting down...")
-        _shutdown = True
-
-    signal.signal(signal.SIGINT, _stop)
-    signal.signal(signal.SIGTERM, _stop)
-
-    # monitor all queries
-    last_batch = {name: -1 for name in queries}
-    while any(q.isActive for q in queries.values()):
-        if _shutdown:
-            for name, q in queries.items():
-                q.stop()
-                print(f"  stopped {name}")
-            break
-        for name, q in queries.items():
-            progress = q.lastProgress
-            if progress and progress.get("batchId", -1) > last_batch[name]:
-                last_batch[name] = progress["batchId"]
-                rows = progress.get("numInputRows", 0)
-                if rows > 0:
-                    print(f"  {name}: batch {last_batch[name]}, {rows} rows")
-        spark.streams.awaitAnyTermination(timeout=1)
-
-    print("done")
+    from src.streaming._shutdown import run_until_shutdown
+    run_until_shutdown(spark, *queries.values(), job_label="bronze_ingestion")

@@ -9,7 +9,6 @@ dependencies = [
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
     "pyspark>=3.5.0",
-    "dbt-duckdb>=1.7.0",
     "pandas>=3.0.1",
     "pyarrow>=23.0.1",
 ]

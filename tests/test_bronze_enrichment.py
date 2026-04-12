@@ -51,7 +51,7 @@ def _make_vp(spark, **overrides):
 def test_vp_has_audit_fields(spark):
     result = enrich_vehicle_positions(_make_vp(spark)).collect()[0]
     assert result["event_id"] is not None
-    assert result["ingestion_timestamp"] is not None
+    assert result["ingested_at"] is not None
 
 
 def test_vp_speed_passthrough(spark):
@@ -155,4 +155,4 @@ def test_sa_alert_id_renamed(spark):
 def test_sa_has_audit_fields(spark):
     result = enrich_service_alerts(_make_sa(spark)).collect()[0]
     assert result["event_id"] is not None
-    assert result["ingestion_timestamp"] is not None
+    assert result["ingested_at"] is not None

@@ -1,0 +1,11 @@
+
+    
+    
+    truncate table "at_streaming"."main"."gtfs_routes";
+    -- dbt seed --
+    
+          COPY "at_streaming"."main"."gtfs_routes" FROM '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/seeds/gtfs_routes.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',')
+        
+
+;
+  

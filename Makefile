@@ -1,4 +1,4 @@
-.PHONY: kafka-up kafka-down run-producer run-streaming run-bronze run-q1 run-q2 run-q3 run-q4 query-bronze sync-duckdb test lint
+.PHONY: kafka-up kafka-down run-producer run-streaming run-bronze run-q1 run-q2 run-q3 run-q4 query-bronze sync-duckdb dbt-deps dbt-seed dbt-run dbt-test dbt-compile dbt-staging dbt-docs test lint
 
 # --- Infrastructure ---
 
@@ -40,10 +40,28 @@ query-bronze:
 sync-duckdb:
 	.venv/bin/python scripts/sync_to_duckdb.py
 
-# --- dbt (placeholder for M5) ---
+# --- dbt ---
+
+dbt-deps:
+	cd transform && dbt deps
+
+dbt-seed:
+	cd transform && dbt seed
 
 dbt-run:
-	cd dbt && dbt run
+	cd transform && dbt run
+
+dbt-test:
+	cd transform && dbt test
+
+dbt-compile:
+	cd transform && dbt compile
+
+dbt-staging:
+	cd transform && dbt seed && dbt run --select staging
+
+dbt-docs:
+	cd transform && dbt docs generate && dbt docs serve
 
 # --- Quality ---
 

@@ -1,0 +1,38 @@
+version: 2
+
+sources:
+  - name: bronze
+    description: >
+      Raw Parquet tables written by Spark Structured Streaming.
+      Local dev reads from BRONZE_OUTPUT_PATH via dbt-duckdb read_parquet().
+      Prod reads from Delta Lake catalog tables.
+    meta:
+      # dbt-duckdb: sources resolve via read_parquet() in model SQL
+      # dbt-databricks: sources resolve via catalog.schema.table
+      external: true
+
+    tables:
+      - name: vehicle_positions
+        description: Raw GPS pings from AT vehicle_positions feed (30s intervals at peak)
+      - name: trip_updates
+        description: Raw trip delay updates from AT trip_updates feed
+      - name: service_alerts
+        description: Raw service alerts from AT service_alerts feed (5-min poll)
+      - name: delay_alerts
+        description: Spark Q1 output — trips with delay > 5 minutes, classified by severity
+      - name: stall_events
+        description: Spark Q2 output — stateful vehicle stall detections (3+ consecutive readings within 10m)
+      - name: headway_metrics
+        description: Spark Q3 output — sliding window headway regularity metrics per route+direction
+      - name: alert_correlations
+        description: Spark Q4 output — 3-stream join correlating service alerts with vehicle/trip impact
+
+  - name: gtfs_static
+    description: >
+      GTFS static reference data. In local dev, loaded as dbt seeds.
+      In prod, loaded by Airflow from AT GTFS ZIP into Delta tables.
+    tables:
+      - name: routes
+        description: GTFS routes.txt — route_id, short_name, type
+      - name: stops
+        description: GTFS stops.txt — stop_id, name, coordinates

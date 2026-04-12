@@ -1,0 +1,37 @@
+version: 2
+
+models:
+  - name: dim_routes
+    description: >
+      Route dimension from GTFS static. Provides route_name and route_type_label
+      for all downstream fact table joins. Refreshed weekly via Airflow.
+    columns:
+      - name: route_id
+        description: AT route identifier (primary key)
+        tests: [not_null, unique]
+      - name: route_name
+        description: Short route name (e.g. "NX1", "OUT", "83")
+        tests: [not_null]
+      - name: route_type_label
+        description: Human-readable transport type
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Bus', 'Rail', 'Other']
+
+  - name: dim_stops
+    description: >
+      Stop dimension from GTFS static. Provides stop_name and coordinates
+      for vehicle position enrichment. Refreshed weekly via Airflow.
+    columns:
+      - name: stop_id
+        description: AT stop identifier (primary key)
+        tests: [not_null, unique]
+      - name: stop_name
+        description: Human-readable stop name
+        tests: [not_null]
+      - name: stop_lat
+        tests: [not_null]
+      - name: stop_lon
+        tests: [not_null]

@@ -13,7 +13,7 @@ from pyspark.sql.functions import uuid as spark_uuid
 def enrich_vehicle_positions(df: DataFrame) -> DataFrame:
     return df.select(
         spark_uuid().alias("event_id"),
-        current_timestamp().alias("ingestion_timestamp"),
+        current_timestamp().alias("ingested_at"),
         "vehicle_id",
         "trip_id",
         "route_id",
@@ -24,7 +24,7 @@ def enrich_vehicle_positions(df: DataFrame) -> DataFrame:
         "current_stop_sequence",
         "stop_id",
         "current_status",
-        from_unixtime("timestamp").cast("timestamp").alias("timestamp"),
+        from_unixtime("timestamp").cast("timestamp").alias("event_ts"),
         "congestion_level",
         "occupancy_status",
         "_raw_payload",
@@ -35,7 +35,7 @@ def enrich_vehicle_positions(df: DataFrame) -> DataFrame:
 def enrich_trip_updates(df: DataFrame) -> DataFrame:
     return df.select(
         spark_uuid().alias("event_id"),
-        current_timestamp().alias("ingestion_timestamp"),
+        current_timestamp().alias("ingested_at"),
         col("id").alias("source_id"),
         "trip_id",
         "route_id",
@@ -44,7 +44,7 @@ def enrich_trip_updates(df: DataFrame) -> DataFrame:
         "start_date",
         "schedule_relationship",
         "delay",
-        from_unixtime("timestamp").cast("timestamp").alias("timestamp"),
+        from_unixtime("timestamp").cast("timestamp").alias("event_ts"),
         "is_deleted",
         "_raw_payload",
         from_unixtime("timestamp").cast("date").alias("event_date"),
@@ -54,7 +54,7 @@ def enrich_trip_updates(df: DataFrame) -> DataFrame:
 def enrich_service_alerts(df: DataFrame) -> DataFrame:
     return df.select(
         spark_uuid().alias("event_id"),
-        current_timestamp().alias("ingestion_timestamp"),
+        current_timestamp().alias("ingested_at"),
         col("id").alias("alert_id"),
         "route_id",
         "cause",
@@ -63,7 +63,7 @@ def enrich_service_alerts(df: DataFrame) -> DataFrame:
         "description_text",
         from_unixtime("active_period_start").cast("timestamp").alias("active_period_start"),
         from_unixtime("active_period_end").cast("timestamp").alias("active_period_end"),
-        from_unixtime("timestamp").cast("timestamp").alias("timestamp"),
+        from_unixtime("timestamp").cast("timestamp").alias("event_ts"),
         "_raw_payload",
         from_unixtime("timestamp").cast("date").alias("event_date"),
     )

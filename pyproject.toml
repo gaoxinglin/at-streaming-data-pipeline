@@ -8,9 +8,10 @@ dependencies = [
     "confluent-kafka[avro]>=2.3.0",
     "requests>=2.31.0",
     "python-dotenv>=1.0.0",
-    "pyspark>=3.5.0",
+    "pyspark>=4.1.1",
     "pandas>=3.0.1",
     "pyarrow>=23.0.1",
+    "duckdb>=1.2.0",
 ]
 
 [tool.pytest.ini_options]

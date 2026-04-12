@@ -13,6 +13,9 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Local data (Bronze Parquet + DuckDB)
+data/
+
 # Terraform
 **/.terraform/
 *.tfstate

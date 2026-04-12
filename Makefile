@@ -1,4 +1,4 @@
-.PHONY: kafka-up kafka-down run-producer run-streaming run-bronze run-q1 run-q2 run-q3 run-q4 test lint
+.PHONY: kafka-up kafka-down run-producer run-streaming run-bronze run-q1 run-q2 run-q3 run-q4 query-bronze sync-duckdb test lint
 
 # --- Infrastructure ---
 
@@ -31,6 +31,14 @@ run-q4:
 	PYSPARK_PYTHON=$$(pwd)/.venv/bin/python .venv/bin/python -m src.streaming.alert_correlation_job
 
 run-streaming: run-bronze run-q1 run-q2 run-q3 run-q4
+
+# --- DuckDB ---
+
+query-bronze:
+	.venv/bin/python scripts/query_bronze.py
+
+sync-duckdb:
+	.venv/bin/python scripts/sync_to_duckdb.py
 
 # --- dbt (placeholder for M5) ---
 

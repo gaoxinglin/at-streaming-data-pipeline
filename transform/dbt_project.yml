@@ -1,0 +1,23 @@
+name: at_streaming
+version: "0.1.0"
+
+profile: at_streaming
+config-version: 2
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  at_streaming:
+    staging:
+      +materialized: view
+    core:
+      +materialized: table
+    marts:
+      +materialized: incremental
+      +incremental_strategy: append

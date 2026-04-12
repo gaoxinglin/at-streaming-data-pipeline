@@ -1,0 +1,234 @@
+[0m23:03:52.097878 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x107f50200>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10996b080>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109b42f60>]}
+
+
+============================== 23:03:52.101068 | d69315e6-35fb-4e0f-b20a-926b328b6709 ==============================
+[0m23:03:52.101068 [info ] [MainThread]: Running with dbt=1.11.7
+[0m23:03:52.101320 [debug] [MainThread]: running dbt with arguments {'invocation_command': 'dbt deps', 'cache_selected_only': 'False', 'quiet': 'False', 'profiles_dir': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform', 'partial_parse': 'True', 'indirect_selection': 'eager', 'log_format': 'default', 'write_json': 'True', 'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])', 'no_print': 'None', 'log_cache_events': 'False', 'introspect': 'True', 'static_parser': 'True', 'printer_width': '80', 'debug': 'False', 'fail_fast': 'False', 'log_path': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/logs', 'target_path': 'None', 'version_check': 'True', 'use_experimental_parser': 'False', 'empty': 'None', 'use_colors': 'True', 'send_anonymous_usage_stats': 'True', 'warn_error': 'None'}
+[0m23:03:52.175385 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'project_id', 'label': 'd69315e6-35fb-4e0f-b20a-926b328b6709', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x107269940>]}
+[0m23:03:52.186408 [debug] [MainThread]: Set downloads directory='/var/folders/kw/rtpfp9xx5vj8h1n_95hjltnm0000gn/T/dbt-downloads-vv707mu0'
+[0m23:03:52.186672 [debug] [MainThread]: Making package index registry request: GET https://hub.getdbt.com/api/v1/index.json
+[0m23:03:52.613499 [debug] [MainThread]: Response from registry index: GET https://hub.getdbt.com/api/v1/index.json 200
+[0m23:03:52.618086 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/dbt-labs/dbt_utils.json
+[0m23:03:52.706858 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/dbt-labs/dbt_utils.json 200
+[0m23:03:52.785860 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/calogica/dbt_expectations.json
+[0m23:03:52.864891 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/calogica/dbt_expectations.json 200
+[0m23:03:52.866539 [warn ] [MainThread]: [[33mWARNING[0m]: Deprecated functionality
+The `calogica/dbt_expectations` package is deprecated in favor of
+`metaplane/dbt_expectations`. Please update your `packages.yml` configuration to
+use `metaplane/dbt_expectations` instead.
+[0m23:03:52.866805 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'deprecation', 'label': 'd69315e6-35fb-4e0f-b20a-926b328b6709', 'property_': 'warn', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109d3be30>]}
+[0m23:03:52.868008 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/calogica/dbt_date.json
+[0m23:03:52.952851 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/calogica/dbt_date.json 200
+[0m23:03:52.964766 [info ] [MainThread]: Updating lock file in file path: /Users/xinglingao/workshop/at-streaming-data-pipeline/transform/package-lock.yml
+[0m23:03:52.968092 [debug] [MainThread]: Set downloads directory='/var/folders/kw/rtpfp9xx5vj8h1n_95hjltnm0000gn/T/dbt-downloads-ffwz0d55'
+[0m23:03:52.971159 [info ] [MainThread]: Installing dbt-labs/dbt_utils
+[0m23:03:54.207547 [info ] [MainThread]: Installed from version 1.3.3
+[0m23:03:54.207828 [info ] [MainThread]: Up to date!
+[0m23:03:54.208015 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': 'd69315e6-35fb-4e0f-b20a-926b328b6709', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109ce5e20>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109ce7860>]}
+[0m23:03:54.208208 [info ] [MainThread]: Installing calogica/dbt_expectations
+[0m23:03:55.423539 [info ] [MainThread]: Installed from version 0.10.4
+[0m23:03:55.423771 [info ] [MainThread]: Up to date!
+[0m23:03:55.423922 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': 'd69315e6-35fb-4e0f-b20a-926b328b6709', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109c47830>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109d3be60>]}
+[0m23:03:55.424080 [info ] [MainThread]: Installing calogica/dbt_date
+[0m23:03:55.824490 [info ] [MainThread]: Installed from version 0.10.1
+[0m23:03:55.825000 [info ] [MainThread]: Up to date!
+[0m23:03:55.825199 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': 'd69315e6-35fb-4e0f-b20a-926b328b6709', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x108df6750>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109afe210>]}
+[0m23:03:55.826405 [warn ] [MainThread]: [[33mWARNING[0m][DeprecationsSummary]: Deprecated functionality
+Summary of encountered deprecations:
+- PackageRedirectDeprecation: 2 occurrences
+To see all deprecation instances instead of just the first occurrence of each,
+run command again with the `--show-all-deprecations` flag. You may also need to
+run with `--no-partial-parse` as some deprecations are only encountered during
+parsing.
+[0m23:03:55.827020 [debug] [MainThread]: Resource report: {"command_name": "deps", "command_success": true, "command_wall_clock_time": 3.7635474, "process_in_blocks": "0", "process_kernel_time": 0.241561, "process_mem_max_rss": "133218304", "process_out_blocks": "0", "process_user_time": 0.872514}
+[0m23:03:55.828132 [debug] [MainThread]: Command `dbt deps` succeeded at 23:03:55.827579 after 3.76 seconds
+[0m23:03:55.828699 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10993fef0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x107f50200>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10927c6b0>]}
+[0m23:03:55.828898 [debug] [MainThread]: Flushing usage events
+[0m23:03:56.788928 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m23:04:05.087382 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1092ab6e0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x1099f33b0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109c27050>]}
+
+
+============================== 23:04:05.089875 | 777b5f6f-43b4-4bcc-bec0-526fd463b288 ==============================
+[0m23:04:05.089875 [info ] [MainThread]: Running with dbt=1.11.7
+[0m23:04:05.090132 [debug] [MainThread]: running dbt with arguments {'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])', 'invocation_command': 'dbt deps', 'quiet': 'False', 'send_anonymous_usage_stats': 'True', 'empty': 'None', 'static_parser': 'True', 'log_path': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/logs', 'version_check': 'True', 'use_colors': 'True', 'log_format': 'default', 'warn_error': 'None', 'debug': 'False', 'use_experimental_parser': 'False', 'introspect': 'True', 'target_path': 'None', 'fail_fast': 'False', 'log_cache_events': 'False', 'no_print': 'None', 'profiles_dir': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform', 'write_json': 'True', 'printer_width': '80', 'indirect_selection': 'eager', 'cache_selected_only': 'False', 'partial_parse': 'True'}
+[0m23:04:05.141970 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'project_id', 'label': '777b5f6f-43b4-4bcc-bec0-526fd463b288', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109cd6de0>]}
+[0m23:04:05.153318 [debug] [MainThread]: Set downloads directory='/var/folders/kw/rtpfp9xx5vj8h1n_95hjltnm0000gn/T/dbt-downloads-428rx_hu'
+[0m23:04:05.153605 [debug] [MainThread]: Making package index registry request: GET https://hub.getdbt.com/api/v1/index.json
+[0m23:04:05.202579 [debug] [MainThread]: Response from registry index: GET https://hub.getdbt.com/api/v1/index.json 200
+[0m23:04:05.203308 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/dbt-labs/dbt_utils.json
+[0m23:04:05.278227 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/dbt-labs/dbt_utils.json 200
+[0m23:04:05.282349 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/metaplane/dbt_expectations.json
+[0m23:04:05.356141 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/metaplane/dbt_expectations.json 200
+[0m23:04:05.358411 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/godatadriven/dbt_date.json
+[0m23:04:05.486546 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/godatadriven/dbt_date.json 200
+[0m23:04:05.496964 [info ] [MainThread]: Updating lock file in file path: /Users/xinglingao/workshop/at-streaming-data-pipeline/transform/package-lock.yml
+[0m23:04:05.526476 [debug] [MainThread]: Set downloads directory='/var/folders/kw/rtpfp9xx5vj8h1n_95hjltnm0000gn/T/dbt-downloads-xloba_ee'
+[0m23:04:05.530839 [info ] [MainThread]: Installing dbt-labs/dbt_utils
+[0m23:04:06.049761 [info ] [MainThread]: Installed from version 1.3.3
+[0m23:04:06.050008 [info ] [MainThread]: Up to date!
+[0m23:04:06.050179 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': '777b5f6f-43b4-4bcc-bec0-526fd463b288', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109cf56a0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109eb7fe0>]}
+[0m23:04:06.050355 [info ] [MainThread]: Installing metaplane/dbt_expectations
+[0m23:04:17.164588 [info ] [MainThread]: Installed from version 0.10.10
+[0m23:04:17.164834 [info ] [MainThread]: Up to date!
+[0m23:04:17.164994 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': '777b5f6f-43b4-4bcc-bec0-526fd463b288', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x108edab70>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109dc84d0>]}
+[0m23:04:17.165156 [info ] [MainThread]: Installing godatadriven/dbt_date
+[0m23:04:17.661747 [info ] [MainThread]: Installed from version 0.17.2
+[0m23:04:17.662369 [info ] [MainThread]: Up to date!
+[0m23:04:17.662572 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': '777b5f6f-43b4-4bcc-bec0-526fd463b288', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109dc84d0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109cd6150>]}
+[0m23:04:17.663674 [debug] [MainThread]: Resource report: {"command_name": "deps", "command_success": true, "command_wall_clock_time": 12.608696, "process_in_blocks": "0", "process_kernel_time": 0.272332, "process_mem_max_rss": "128319488", "process_out_blocks": "0", "process_user_time": 0.890385}
+[0m23:04:17.663961 [debug] [MainThread]: Command `dbt deps` succeeded at 23:04:17.663906 after 12.61 seconds
+[0m23:04:17.664138 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109bc7bc0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109cf56a0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x109eb7fe0>]}
+[0m23:04:17.664284 [debug] [MainThread]: Flushing usage events
+[0m23:04:20.147633 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m23:04:25.247538 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10dac62a0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d9ad4c0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e142ea0>]}
+
+
+============================== 23:04:25.250443 | dc783475-a162-4fba-a37d-7eb43f36f1e6 ==============================
+[0m23:04:25.250443 [info ] [MainThread]: Running with dbt=1.11.7
+[0m23:04:25.250738 [debug] [MainThread]: running dbt with arguments {'no_print': 'None', 'partial_parse': 'True', 'static_parser': 'True', 'debug': 'False', 'log_format': 'default', 'introspect': 'True', 'send_anonymous_usage_stats': 'True', 'printer_width': '80', 'empty': 'None', 'use_experimental_parser': 'False', 'log_path': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/logs', 'version_check': 'True', 'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])', 'target_path': 'None', 'use_colors': 'True', 'cache_selected_only': 'False', 'write_json': 'True', 'fail_fast': 'False', 'indirect_selection': 'eager', 'profiles_dir': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform', 'log_cache_events': 'False', 'warn_error': 'None', 'invocation_command': 'dbt debug', 'quiet': 'False'}
+[0m23:04:25.258491 [info ] [MainThread]: dbt version: 1.11.7
+[0m23:04:25.258686 [info ] [MainThread]: python version: 3.12.8
+[0m23:04:25.258800 [info ] [MainThread]: python path: /Users/xinglingao/workshop/at-streaming-data-pipeline/.venv/bin/python3
+[0m23:04:25.258908 [info ] [MainThread]: os info: macOS-26.4-arm64-arm-64bit
+[0m23:04:25.389770 [info ] [MainThread]: Using profiles dir at /Users/xinglingao/workshop/at-streaming-data-pipeline/transform
+[0m23:04:25.390012 [info ] [MainThread]: Using profiles.yml file at /Users/xinglingao/workshop/at-streaming-data-pipeline/transform/profiles.yml
+[0m23:04:25.390127 [info ] [MainThread]: Using dbt_project.yml file at /Users/xinglingao/workshop/at-streaming-data-pipeline/transform/dbt_project.yml
+[0m23:04:25.391185 [info ] [MainThread]: adapter type: duckdb
+[0m23:04:25.391304 [info ] [MainThread]: adapter version: 1.10.1
+[0m23:04:25.433349 [info ] [MainThread]: Configuration:
+[0m23:04:25.433607 [info ] [MainThread]:   profiles.yml file [[32mOK found and valid[0m]
+[0m23:04:25.433730 [info ] [MainThread]:   dbt_project.yml file [[32mOK found and valid[0m]
+[0m23:04:25.433835 [info ] [MainThread]: Required dependencies:
+[0m23:04:25.434032 [debug] [MainThread]: Executing "git --help"
+[0m23:04:25.443495 [debug] [MainThread]: STDOUT: "b"usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]\n           [--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]\n           [-p | --paginate | -P | --no-pager] [--no-replace-objects] [--no-lazy-fetch]\n           [--no-optional-locks] [--no-advice] [--bare] [--git-dir=<path>]\n           [--work-tree=<path>] [--namespace=<name>] [--config-env=<name>=<envvar>]\n           <command> [<args>]\n\nThese are common Git commands used in various situations:\n\nstart a working area (see also: git help tutorial)\n   clone      Clone a repository into a new directory\n   init       Create an empty Git repository or reinitialize an existing one\n\nwork on the current change (see also: git help everyday)\n   add        Add file contents to the index\n   mv         Move or rename a file, a directory, or a symlink\n   restore    Restore working tree files\n   rm         Remove files from the working tree and from the index\n\nexamine the history and state (see also: git help revisions)\n   bisect     Use binary search to find the commit that introduced a bug\n   diff       Show changes between commits, commit and working tree, etc\n   grep       Print lines matching a pattern\n   log        Show commit logs\n   show       Show various types of objects\n   status     Show the working tree status\n\ngrow, mark and tweak your common history\n   backfill   Download missing objects in a partial clone\n   branch     List, create, or delete branches\n   commit     Record changes to the repository\n   merge      Join two or more development histories together\n   rebase     Reapply commits on top of another base tip\n   reset      Reset current HEAD to the specified state\n   switch     Switch branches\n   tag        Create, list, delete or verify a tag object signed with GPG\n\ncollaborate (see also: git help workflows)\n   fetch      Download objects and refs from another repository\n   pull       Fetch from and integrate with another repository or a local branch\n   push       Update remote refs along with associated objects\n\n'git help -a' and 'git help -g' list available subcommands and some\nconcept guides. See 'git help <command>' or 'git help <concept>'\nto read about a specific subcommand or concept.\nSee 'git help git' for an overview of the system.\n""
+[0m23:04:25.444143 [debug] [MainThread]: STDERR: "b''"
+[0m23:04:25.444321 [info ] [MainThread]:  - git [[32mOK found[0m]
+
+[0m23:04:25.444465 [info ] [MainThread]: Connection:
+[0m23:04:25.444608 [info ] [MainThread]:   database: at_streaming
+[0m23:04:25.444706 [info ] [MainThread]:   schema: main
+[0m23:04:25.444803 [info ] [MainThread]:   path: target/at_streaming.duckdb
+[0m23:04:25.444894 [info ] [MainThread]:   config_options: None
+[0m23:04:25.444985 [info ] [MainThread]:   extensions: None
+[0m23:04:25.445078 [info ] [MainThread]:   settings: {}
+[0m23:04:25.445175 [info ] [MainThread]:   external_root: .
+[0m23:04:25.445266 [info ] [MainThread]:   use_credential_provider: None
+[0m23:04:25.445358 [info ] [MainThread]:   attach: None
+[0m23:04:25.445524 [info ] [MainThread]:   filesystems: None
+[0m23:04:25.445641 [info ] [MainThread]:   remote: None
+[0m23:04:25.445750 [info ] [MainThread]:   plugins: None
+[0m23:04:25.445848 [info ] [MainThread]:   disable_transactions: False
+[0m23:04:25.446202 [info ] [MainThread]: Registered adapter: duckdb=1.10.1
+[0m23:04:25.497159 [debug] [MainThread]: Acquiring new duckdb connection 'debug'
+[0m23:04:25.528569 [debug] [MainThread]: Using duckdb connection "debug"
+[0m23:04:25.528783 [debug] [MainThread]: On debug: select 1 as id
+[0m23:04:25.528900 [debug] [MainThread]: Opening a new connection, currently in state init
+[0m23:04:25.535100 [debug] [MainThread]: DuckDB adapter: duckdb error: IO Error: Cannot open file "/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/target/at_streaming.duckdb": No such file or directory
+[0m23:04:25.535313 [debug] [MainThread]: DuckDB adapter: Error running SQL: select 1 as id
+[0m23:04:25.535423 [debug] [MainThread]: DuckDB adapter: Rolling back transaction.
+[0m23:04:25.535533 [debug] [MainThread]: Opening a new connection, currently in state init
+[0m23:04:25.537471 [info ] [MainThread]:   Connection test: [[31mERROR[0m]
+
+[0m23:04:25.537610 [info ] [MainThread]: [31m1 check failed:[0m
+[0m23:04:25.537713 [info ] [MainThread]: dbt was unable to connect to the specified database.
+The database returned the following error:
+
+  >IO Error: Cannot open file "/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/target/at_streaming.duckdb": No such file or directory
+
+Check your database credentials and try again. For more information, visit:
+https://docs.getdbt.com/docs/configure-your-profile
+
+
+[0m23:04:25.537975 [debug] [MainThread]: Resource report: {"command_name": "debug", "command_success": false, "command_wall_clock_time": 0.32482436, "process_in_blocks": "0", "process_kernel_time": 0.173395, "process_mem_max_rss": "142213120", "process_out_blocks": "0", "process_user_time": 0.717998}
+[0m23:04:25.538165 [debug] [MainThread]: Command `dbt debug` failed at 23:04:25.538126 after 0.33 seconds
+[0m23:04:25.538316 [debug] [MainThread]: Connection 'debug' was properly closed.
+[0m23:04:25.538458 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e104f50>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e21b440>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d4578c0>]}
+[0m23:04:25.538630 [debug] [MainThread]: Flushing usage events
+[0m23:04:26.654547 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m23:04:32.502108 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10bdc3890>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10bf9f230>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10bf9eed0>]}
+
+
+============================== 23:04:32.504594 | 0daef12b-e0db-430e-9765-a8ae39085008 ==============================
+[0m23:04:32.504594 [info ] [MainThread]: Running with dbt=1.11.7
+[0m23:04:32.504873 [debug] [MainThread]: running dbt with arguments {'static_parser': 'True', 'log_path': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/logs', 'log_format': 'default', 'invocation_command': 'dbt debug', 'cache_selected_only': 'False', 'empty': 'None', 'debug': 'False', 'send_anonymous_usage_stats': 'True', 'partial_parse': 'True', 'no_print': 'None', 'quiet': 'False', 'printer_width': '80', 'version_check': 'True', 'introspect': 'True', 'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])', 'use_colors': 'True', 'use_experimental_parser': 'False', 'log_cache_events': 'False', 'profiles_dir': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform', 'indirect_selection': 'eager', 'warn_error': 'None', 'write_json': 'True', 'fail_fast': 'False', 'target_path': 'None'}
+[0m23:04:32.512124 [info ] [MainThread]: dbt version: 1.11.7
+[0m23:04:32.512322 [info ] [MainThread]: python version: 3.12.8
+[0m23:04:32.512439 [info ] [MainThread]: python path: /Users/xinglingao/workshop/at-streaming-data-pipeline/.venv/bin/python3
+[0m23:04:32.512546 [info ] [MainThread]: os info: macOS-26.4-arm64-arm-64bit
+[0m23:04:32.554931 [info ] [MainThread]: Using profiles dir at /Users/xinglingao/workshop/at-streaming-data-pipeline/transform
+[0m23:04:32.555150 [info ] [MainThread]: Using profiles.yml file at /Users/xinglingao/workshop/at-streaming-data-pipeline/transform/profiles.yml
+[0m23:04:32.555262 [info ] [MainThread]: Using dbt_project.yml file at /Users/xinglingao/workshop/at-streaming-data-pipeline/transform/dbt_project.yml
+[0m23:04:32.556650 [info ] [MainThread]: adapter type: duckdb
+[0m23:04:32.556803 [info ] [MainThread]: adapter version: 1.10.1
+[0m23:04:32.596144 [info ] [MainThread]: Configuration:
+[0m23:04:32.596419 [info ] [MainThread]:   profiles.yml file [[32mOK found and valid[0m]
+[0m23:04:32.596532 [info ] [MainThread]:   dbt_project.yml file [[32mOK found and valid[0m]
+[0m23:04:32.596634 [info ] [MainThread]: Required dependencies:
+[0m23:04:32.596838 [debug] [MainThread]: Executing "git --help"
+[0m23:04:32.604784 [debug] [MainThread]: STDOUT: "b"usage: git [-v | --version] [-h | --help] [-C <path>] [-c <name>=<value>]\n           [--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]\n           [-p | --paginate | -P | --no-pager] [--no-replace-objects] [--no-lazy-fetch]\n           [--no-optional-locks] [--no-advice] [--bare] [--git-dir=<path>]\n           [--work-tree=<path>] [--namespace=<name>] [--config-env=<name>=<envvar>]\n           <command> [<args>]\n\nThese are common Git commands used in various situations:\n\nstart a working area (see also: git help tutorial)\n   clone      Clone a repository into a new directory\n   init       Create an empty Git repository or reinitialize an existing one\n\nwork on the current change (see also: git help everyday)\n   add        Add file contents to the index\n   mv         Move or rename a file, a directory, or a symlink\n   restore    Restore working tree files\n   rm         Remove files from the working tree and from the index\n\nexamine the history and state (see also: git help revisions)\n   bisect     Use binary search to find the commit that introduced a bug\n   diff       Show changes between commits, commit and working tree, etc\n   grep       Print lines matching a pattern\n   log        Show commit logs\n   show       Show various types of objects\n   status     Show the working tree status\n\ngrow, mark and tweak your common history\n   backfill   Download missing objects in a partial clone\n   branch     List, create, or delete branches\n   commit     Record changes to the repository\n   merge      Join two or more development histories together\n   rebase     Reapply commits on top of another base tip\n   reset      Reset current HEAD to the specified state\n   switch     Switch branches\n   tag        Create, list, delete or verify a tag object signed with GPG\n\ncollaborate (see also: git help workflows)\n   fetch      Download objects and refs from another repository\n   pull       Fetch from and integrate with another repository or a local branch\n   push       Update remote refs along with associated objects\n\n'git help -a' and 'git help -g' list available subcommands and some\nconcept guides. See 'git help <command>' or 'git help <concept>'\nto read about a specific subcommand or concept.\nSee 'git help git' for an overview of the system.\n""
+[0m23:04:32.605197 [debug] [MainThread]: STDERR: "b''"
+[0m23:04:32.605346 [info ] [MainThread]:  - git [[32mOK found[0m]
+
+[0m23:04:32.605479 [info ] [MainThread]: Connection:
+[0m23:04:32.605606 [info ] [MainThread]:   database: at_streaming
+[0m23:04:32.605704 [info ] [MainThread]:   schema: main
+[0m23:04:32.605802 [info ] [MainThread]:   path: target/at_streaming.duckdb
+[0m23:04:32.605899 [info ] [MainThread]:   config_options: None
+[0m23:04:32.605993 [info ] [MainThread]:   extensions: None
+[0m23:04:32.606085 [info ] [MainThread]:   settings: {}
+[0m23:04:32.606178 [info ] [MainThread]:   external_root: .
+[0m23:04:32.606266 [info ] [MainThread]:   use_credential_provider: None
+[0m23:04:32.606359 [info ] [MainThread]:   attach: None
+[0m23:04:32.606445 [info ] [MainThread]:   filesystems: None
+[0m23:04:32.606531 [info ] [MainThread]:   remote: None
+[0m23:04:32.606616 [info ] [MainThread]:   plugins: None
+[0m23:04:32.606702 [info ] [MainThread]:   disable_transactions: False
+[0m23:04:32.606944 [info ] [MainThread]: Registered adapter: duckdb=1.10.1
+[0m23:04:32.653657 [debug] [MainThread]: Acquiring new duckdb connection 'debug'
+[0m23:04:32.675722 [debug] [MainThread]: Using duckdb connection "debug"
+[0m23:04:32.675917 [debug] [MainThread]: On debug: select 1 as id
+[0m23:04:32.676045 [debug] [MainThread]: Opening a new connection, currently in state init
+[0m23:04:32.687285 [debug] [MainThread]: SQL status: OK in 0.011 seconds
+[0m23:04:32.687746 [debug] [MainThread]: On debug: Close
+[0m23:04:32.688080 [info ] [MainThread]:   Connection test: [[32mOK connection ok[0m]
+
+[0m23:04:32.688195 [info ] [MainThread]: [32mAll checks passed![0m
+[0m23:04:32.688456 [debug] [MainThread]: Resource report: {"command_name": "debug", "command_success": true, "command_wall_clock_time": 0.21813096, "process_in_blocks": "0", "process_kernel_time": 0.158587, "process_mem_max_rss": "144637952", "process_out_blocks": "0", "process_user_time": 0.689018}
+[0m23:04:32.688643 [debug] [MainThread]: Command `dbt debug` succeeded at 23:04:32.688604 after 0.22 seconds
+[0m23:04:32.688759 [debug] [MainThread]: Connection 'debug' was properly closed.
+[0m23:04:32.688895 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10be5ba70>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10b255850>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10b255250>]}
+[0m23:04:32.689059 [debug] [MainThread]: Flushing usage events
+[0m23:04:33.703504 [debug] [MainThread]: An error was encountered while trying to flush usage events
+[0m13:56:01.210516 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10c97b740>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10dfe7680>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10dfe71d0>]}
+
+
+============================== 13:56:01.212751 | 5fa88fb1-d928-49ba-be69-165b965b095b ==============================
+[0m13:56:01.212751 [info ] [MainThread]: Running with dbt=1.11.7
+[0m13:56:01.213017 [debug] [MainThread]: running dbt with arguments {'indirect_selection': 'eager', 'quiet': 'False', 'invocation_command': 'dbt ', 'no_print': 'None', 'use_colors': 'True', 'target_path': 'None', 'profiles_dir': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform', 'log_cache_events': 'False', 'printer_width': '80', 'fail_fast': 'False', 'debug': 'False', 'warn_error': 'None', 'introspect': 'True', 'partial_parse': 'True', 'version_check': 'True', 'warn_error_options': 'WarnErrorOptionsV2(error=[], warn=[], silence=[])', 'log_path': '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/logs', 'empty': 'None', 'log_format': 'default', 'write_json': 'True', 'use_experimental_parser': 'False', 'static_parser': 'True', 'cache_selected_only': 'False', 'send_anonymous_usage_stats': 'True'}
+[0m13:56:01.317320 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'project_id', 'label': '5fa88fb1-d928-49ba-be69-165b965b095b', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e019250>]}
+[0m13:56:01.351094 [debug] [MainThread]: Set downloads directory='/var/folders/kw/rtpfp9xx5vj8h1n_95hjltnm0000gn/T/dbt-downloads-l_d4boij'
+[0m13:56:01.351353 [debug] [MainThread]: Making package index registry request: GET https://hub.getdbt.com/api/v1/index.json
+[0m13:56:01.477911 [debug] [MainThread]: Response from registry index: GET https://hub.getdbt.com/api/v1/index.json 200
+[0m13:56:01.478863 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/dbt-labs/dbt_utils.json
+[0m13:56:01.557869 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/dbt-labs/dbt_utils.json 200
+[0m13:56:01.560699 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/metaplane/dbt_expectations.json
+[0m13:56:01.730142 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/metaplane/dbt_expectations.json 200
+[0m13:56:01.733275 [debug] [MainThread]: Making package registry request: GET https://hub.getdbt.com/api/v1/godatadriven/dbt_date.json
+[0m13:56:01.815602 [debug] [MainThread]: Response from registry: GET https://hub.getdbt.com/api/v1/godatadriven/dbt_date.json 200
+[0m13:56:01.818308 [info ] [MainThread]: Installing dbt-labs/dbt_utils
+[0m13:56:02.802081 [info ] [MainThread]: Installed from version 1.3.3
+[0m13:56:02.802352 [info ] [MainThread]: Up to date!
+[0m13:56:02.802531 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': '5fa88fb1-d928-49ba-be69-165b965b095b', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10de9bda0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10dfa4590>]}
+[0m13:56:02.802921 [info ] [MainThread]: Installing metaplane/dbt_expectations
+[0m13:56:04.147253 [info ] [MainThread]: Installed from version 0.10.10
+[0m13:56:04.147716 [info ] [MainThread]: Up to date!
+[0m13:56:04.148180 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': '5fa88fb1-d928-49ba-be69-165b965b095b', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e2909e0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e1e3cb0>]}
+[0m13:56:04.148659 [info ] [MainThread]: Installing godatadriven/dbt_date
+[0m13:56:04.691561 [info ] [MainThread]: Installed from version 0.17.2
+[0m13:56:04.691813 [info ] [MainThread]: Up to date!
+[0m13:56:04.691972 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'package', 'label': '5fa88fb1-d928-49ba-be69-165b965b095b', 'property_': 'install', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d29a8a0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10d299a60>]}
+[0m13:56:04.693666 [debug] [MainThread]: Resource report: {"command_name": "deps", "command_success": true, "command_wall_clock_time": 3.5172038, "process_in_blocks": "0", "process_kernel_time": 0.223624, "process_mem_max_rss": "131219456", "process_out_blocks": "0", "process_user_time": 0.81595}
+[0m13:56:04.695242 [debug] [MainThread]: Command `cli deps` succeeded at 13:56:04.694737 after 3.52 seconds
+[0m13:56:04.695943 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e019250>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e2909e0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x10e1ca870>]}
+[0m13:56:04.696281 [debug] [MainThread]: Flushing usage events
+[0m13:56:05.702748 [debug] [MainThread]: An error was encountered while trying to flush usage events

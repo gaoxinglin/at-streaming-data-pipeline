@@ -1,0 +1,120 @@
+version: 2
+
+models:
+  - name: fct_delay_alerts
+    description: >
+      Q1 Historical: trip delay alert events by route.
+      Filters trip_updates where delay exceeds 5 minutes, enriched with route dimension.
+      Answers: "Which routes have the most delay alerts over the past 30 days?"
+    columns:
+      - name: event_id
+        description: Surrogate key from Bronze trip_updates
+        tests: [unique, not_null]
+      - name: event_date
+        tests: [not_null]
+      - name: route_id
+        tests: [not_null]
+      - name: trip_id
+        tests: [not_null]
+      - name: delay
+        description: Trip-level delay in seconds (> 300s threshold)
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 300
+                max_value: 7200
+      - name: delay_minutes
+        tests: [not_null]
+      - name: route_type_label
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['Bus', 'Rail', 'Other']
+      - name: event_ts
+        tests: [not_null]
+
+  - name: fct_stall_incidents
+    description: >
+      Q2 Historical: vehicle stall incidents with location and duration.
+      Answers: "Where and when do stalls cluster? Which routes have the most stall incidents?"
+    columns:
+      - name: stall_id
+        description: Surrogate key from Spark Q2 stall detection
+        tests: [unique, not_null]
+      - name: event_date
+        tests: [not_null]
+      - name: vehicle_id
+        tests: [not_null]
+      - name: route_id
+        tests: [not_null]
+      - name: stall_duration_s
+        description: Approximate stall duration in seconds (3+ readings at ~30s intervals)
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 86400
+      - name: detected_at
+        tests: [not_null]
+
+  - name: fct_headway_regularity
+    description: >
+      Q3 Historical: hourly headway regularity by route, rolled up from Spark sliding windows.
+      Answers: "Which routes have the worst bunching? How does headway vary by time of day?"
+    columns:
+      - name: route_id
+        tests: [not_null]
+      - name: hour_bucket
+        tests: [not_null]
+      - name: avg_headway_s
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: headway_cv
+        description: Coefficient of variation — higher means more irregular service
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 3.0
+      - name: bunching_pct
+        description: Percentage of windows in the hour where CV exceeded bunching threshold
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 100
+      - name: trip_count
+        tests: [not_null]
+
+  - name: fct_alert_impact
+    description: >
+      Q4 Historical: service alert impact — affected vehicles, trips, and average delay.
+      Answers: "How quickly does the network respond to disruptions? Which routes are most disruption-prone?"
+    columns:
+      - name: correlation_id
+        tests: [unique, not_null]
+      - name: alert_id
+        tests: [not_null]
+      - name: event_date
+        tests: [not_null]
+      - name: route_id
+        tests: [not_null]
+      - name: vehicles_affected
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 500
+      - name: trips_affected
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 500
+      - name: avg_delay_during
+        description: Average delay in seconds during the alert window
+      - name: detected_at
+        tests: [not_null]

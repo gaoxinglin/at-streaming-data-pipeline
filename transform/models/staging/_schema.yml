@@ -1,0 +1,134 @@
+version: 2
+
+models:
+  - name: stg_vehicle_positions
+    description: Cleaned vehicle GPS pings. Drops _raw_payload, validates coordinates.
+    columns:
+      - name: event_id
+        tests: [not_null, unique]
+      - name: vehicle_id
+        tests: [not_null]
+      - name: route_id
+        tests: [not_null]
+      - name: latitude
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -90
+                max_value: 90
+      - name: longitude
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -180
+                max_value: 180
+      - name: event_ts
+        tests: [not_null]
+
+  - name: stg_trip_updates
+    description: Cleaned trip delay updates. Filters deleted records, adds delay_minutes.
+    columns:
+      - name: event_id
+        tests: [not_null, unique]
+      - name: trip_id
+        tests: [not_null]
+      - name: route_id
+        tests: [not_null]
+      - name: delay
+        tests: [not_null]
+      - name: delay_minutes
+        tests: [not_null]
+      - name: event_ts
+        tests: [not_null]
+
+  - name: stg_stall_events
+    description: Cleaned vehicle stall events from Spark Q2 stateful detection.
+    columns:
+      - name: stall_id
+        tests: [not_null, unique]
+      - name: vehicle_id
+        tests: [not_null]
+      - name: reading_count
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 3
+      - name: stall_duration_s
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+
+  - name: stg_headway_metrics
+    description: Cleaned headway regularity from Spark Q3 sliding window output.
+    columns:
+      - name: route_id
+        tests: [not_null]
+      - name: trip_count
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 1
+      - name: headway_mean_s
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: is_bunching
+        tests: [not_null]
+
+  - name: stg_alert_correlations
+    description: Cleaned alert impact from Spark Q4 multi-stream join.
+    columns:
+      - name: correlation_id
+        tests: [not_null, unique]
+      - name: alert_id
+        tests: [not_null]
+      - name: vehicles_affected
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+      - name: trips_affected
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+
+  - name: stg_gtfs_routes
+    description: Cleaned GTFS routes with route_type mapped to label (Bus/Rail).
+    columns:
+      - name: route_id
+        tests: [not_null, unique]
+      - name: route_short_name
+        tests: [not_null]
+      - name: route_type_label
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Bus', 'Rail', 'Other']
+
+  - name: stg_gtfs_stops
+    description: Cleaned GTFS stops with validated NZ coordinates.
+    columns:
+      - name: stop_id
+        tests: [not_null, unique]
+      - name: stop_name
+        tests: [not_null]
+      - name: stop_lat
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -48
+                max_value: -34
+      - name: stop_lon
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 166
+                max_value: 179

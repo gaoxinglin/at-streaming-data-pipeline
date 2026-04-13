@@ -1,7 +1,9 @@
 
     
     
-    truncate table "at_streaming"."main"."gtfs_stops";
+    
+    create table "at_streaming"."main"."gtfs_stops" ("stop_id" varchar,"stop_code" varchar,"stop_name" varchar,"stop_desc" varchar,"stop_lat" double,"stop_lon" double,"zone_id" varchar,"stop_url" varchar,"location_type" integer,"parent_station" varchar,"stop_timezone" varchar,"platform_code" varchar,"wheelchair_boarding" integer,"start_date" varchar,"end_date" varchar)
+  ;
     -- dbt seed --
     
           COPY "at_streaming"."main"."gtfs_stops" FROM '/Users/xinglingao/workshop/at-streaming-data-pipeline/transform/seeds/gtfs_stops.csv' (FORMAT CSV, HEADER TRUE, DELIMITER ',')

@@ -8,7 +8,7 @@
   
     as (
       -- Stop dimension: joins downstream on stop_id to enrich facts with name + location.
--- Materialized as table — ~7k stops, refreshed weekly by Airflow.
+-- Materialized as table — ~7k stops, refreshed weekly by Databricks Workflow.
 
 select
     stop_id,

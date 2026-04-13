@@ -16,6 +16,12 @@ __pycache__/
 # Local data (Bronze Parquet + DuckDB)
 data/
 
+# dbt
+transform/target/
+transform/dbt_packages/
+transform/logs/
+transform/.user.yml
+
 # Terraform
 **/.terraform/
 *.tfstate

@@ -30,7 +30,7 @@ sources:
   - name: gtfs_static
     description: >
       GTFS static reference data. In local dev, loaded as dbt seeds.
-      In prod, loaded by Airflow from AT GTFS ZIP into Delta tables.
+      In prod, loaded by Databricks Workflow from AT GTFS ZIP into Delta tables.
     tables:
       - name: routes
         description: GTFS routes.txt — route_id, short_name, type

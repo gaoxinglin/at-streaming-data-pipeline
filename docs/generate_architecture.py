@@ -2,7 +2,7 @@
 
 from PIL import Image, ImageDraw, ImageFont
 
-W, H = 1800, 1200
+W, H = 1800, 1280
 BG = (12, 18, 32)
 AMBER = (245, 180, 60)
 TEAL = (60, 190, 200)
@@ -23,6 +23,7 @@ f_body = ImageFont.truetype(f"{FONT_DIR}/JetBrainsMono-Regular.ttf", 15)
 f_small = ImageFont.truetype(f"{FONT_DIR}/JetBrainsMono-Regular.ttf", 13)
 f_q = ImageFont.truetype(f"{FONT_DIR}/JetBrainsMono-Bold.ttf", 16)
 f_label = ImageFont.truetype(f"{FONT_DIR}/Jura-Light.ttf", 14)
+f_tiny = ImageFont.truetype(f"{FONT_DIR}/JetBrainsMono-Regular.ttf", 11)
 
 
 def rrect(x, y, w, h, r=8, fill=None, outline=None, width=1):
@@ -104,12 +105,19 @@ topics = [
     ("at.headway_metrics", AMBER),
     ("at.alerts", CORAL),
 ]
+# Track topic y positions for input arrows
+topic_ys = {}
 for i, (t, c) in enumerate(topics):
     ty = kafka_y + 50 + i * 32
+    topic_ys[t] = ty + 8
     dot(kafka_x+24, ty+8, 5, c)
     draw.text((kafka_x+40, ty), t, fill=c, font=f_body)
 
-# Kafka → Spark (horizontal)
+# Input/output labels
+draw.text((kafka_x+20, kafka_y + 50 + 2*32 + 20), "── input", fill=TEAL, font=f_tiny)
+draw.text((kafka_x+110, kafka_y + 50 + 2*32 + 20), "── output", fill=AMBER, font=f_tiny)
+
+# Kafka → Spark (horizontal to Bronze ingestion)
 kafka_right = kafka_x + kafka_w
 spark_x = 820
 spark_conn_y = kafka_y + 80
@@ -127,52 +135,67 @@ draw.text((spark_x+24, spark_y+16), "SPARK STRUCTURED STREAMING", fill=AMBER, fo
 draw.text((spark_x+380, spark_y+18), "5 independent streaming jobs", fill=DIM, font=f_small)
 hline(spark_x+10, spark_x+spark_w-10, spark_y+46, SLATE, 1)
 
-# Bronze ingestion bar — full names
+# Bronze ingestion bar
 rrect(spark_x+24, spark_y+58, spark_w-48, 38, r=6, fill=(25, 35, 55), outline=SLATE, width=1)
 ctxt("Bronze Ingestion    vehicle_positions | trip_updates | service_alerts",
      f_body, spark_x+spark_w//2, spark_y+68, WHITE)
 
-# Q1-Q4 jobs (no dots)
+# Q1-Q4 jobs with source topic annotations
 jobs = [
-    ("Q1", "delay_alert_job", "stateless filter"),
-    ("Q2", "vehicle_stall_job", "stateful per-vehicle"),
-    ("Q3", "headway_regularity_job", "windowed aggregation"),
-    ("Q4", "alert_correlation_job", "3-stream join"),
+    ("Q1", "delay_alert_job", "stateless filter", "← trip_updates"),
+    ("Q2", "vehicle_stall_job", "stateful per-vehicle", "← vehicle_positions"),
+    ("Q3", "headway_regularity_job", "windowed aggregation", "← trip_updates"),
+    ("Q4", "alert_correlation_job", "3-stream join", "← all 3 topics"),
 ]
-for i, (q, name, pattern) in enumerate(jobs):
+for i, (q, name, pattern, source) in enumerate(jobs):
     jy = spark_y + 112 + i * 74
     rrect(spark_x+24, jy, 42, 30, r=5, fill=CORAL)
     ctxt(q, f_q, spark_x+45, jy+5, BG)
     rrect(spark_x+78, jy, spark_w-114, 58, r=6, outline=SLATE, width=1)
     draw.text((spark_x+98, jy+8), name, fill=WHITE, font=f_node)
     draw.text((spark_x+98, jy+32), pattern, fill=DIM, font=f_body)
+    # Source topic annotation on right side of job box
+    draw.text((spark_x+spark_w-280, jy+32), source, fill=TEAL, font=f_small)
 
 # === RED LINE: Spark Q1-Q4 → at.alerts (exits Spark LEFT, one turn up) ===
-# Route: Spark left edge → left to align with Kafka → straight up into Kafka
-red_exit_y = spark_y + 340  # between Q3 and Q4 on left edge
-kafka_alerts_x = kafka_x + kafka_w - 40  # right side of Kafka, near at.alerts
+red_exit_y = spark_y + 340
+kafka_alerts_x = kafka_x + kafka_w - 40
 
-# Horizontal from Spark left edge to kafka_alerts_x
 hline(kafka_alerts_x, spark_x, red_exit_y, CORAL)
-# Straight up into Kafka bottom
 vline(kafka_alerts_x, kafka_y + kafka_h, red_exit_y, CORAL)
 arrow_u(kafka_alerts_x, kafka_y + kafka_h + 2, CORAL, 6)
-# Label
 draw.text((kafka_alerts_x - 200, red_exit_y - 20), "Q1-Q4 alerts writeback", fill=CORAL, font=f_small)
 
-# === BLUE LINE: Spark → dbt (straight down, inside overlap zone) ===
+# === BLUE LINE: Spark → dbt (straight down) ===
 R2 = 700
-# Spark: x=820..1740, dbt: x=420..1100 → overlap: 820..1100
-bridge_x = 960  # inside both Spark and dbt, straight vertical line
+bridge_x = 960
 
 vline(bridge_x, spark_y + spark_h, R2, TEAL)
 arrow_d(bridge_x, R2 - 2, TEAL, 6)
-draw.text((bridge_x + 12, (spark_y + spark_h + R2) // 2 - 8), "Bronze tables", fill=DIM, font=f_label)
+draw.text((bridge_x + 12, (spark_y + spark_h + R2) // 2 - 8),
+          "Bronze raw + detection tables", fill=DIM, font=f_label)
 
 # === ROW 2 ===
 
+# === Databricks Workflows ===
+wf_x, wf_y = 60, R2 - 30
+wf_w, wf_h = 260, 110
+rrect(wf_x, wf_y, wf_w, wf_h, outline=TEAL, width=2)
+draw.text((wf_x+20, wf_y+12), "Databricks Workflows", fill=TEAL, font=f_node)
+hline(wf_x+10, wf_x+wf_w-10, wf_y+38, SLATE, 1)
+draw.text((wf_x+20, wf_y+48), "weekly GTFS static", fill=DIM, font=f_body)
+draw.text((wf_x+20, wf_y+68), "refresh + dbt trigger", fill=DIM, font=f_body)
+
+# Workflows → dbt (horizontal)
+dbt_x = 420
+wf_right = wf_x + wf_w
+wf_conn_y = wf_y + wf_h // 2
+hline(wf_right, dbt_x, wf_conn_y, SLATE, 2)
+arrow_r(dbt_x - 2, wf_conn_y, SLATE, 6)
+draw.text((wf_right + 14, wf_conn_y - 20), "schedule", fill=DIM, font=f_small)
+
 # === GTFS Static ===
-static_x, static_y = 60, R2 + 30
+static_x, static_y = 60, R2 + 100
 static_w, static_h = 260, 80
 rrect(static_x, static_y, static_w, static_h, outline=SLATE, width=2)
 draw.text((static_x+20, static_y+12), "GTFS Static", fill=WHITE, font=f_node)
@@ -181,10 +204,9 @@ draw.text((static_x+20, static_y+58), "routes.txt + stops.txt", fill=DIM, font=f
 
 # GTFS Static → dbt (horizontal)
 static_right = static_x + static_w
-dbt_x = 420
 hline(static_right, dbt_x, static_y + static_h//2, SLATE, 2)
 arrow_r(dbt_x - 2, static_y + static_h//2, SLATE, 6)
-draw.text((static_right + 14, static_y + static_h//2 - 20), "dim refresh", fill=DIM, font=f_small)
+draw.text((static_right + 14, static_y + static_h//2 - 20), "dim tables", fill=DIM, font=f_small)
 
 # === dbt ===
 dbt_w, dbt_h = 680, 380

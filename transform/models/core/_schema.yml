@@ -4,7 +4,7 @@ models:
   - name: dim_routes
     description: >
       Route dimension from GTFS static. Provides route_name and route_type_label
-      for all downstream fact table joins. Refreshed weekly via Airflow.
+      for all downstream fact table joins. Refreshed weekly via Databricks Workflow.
     columns:
       - name: route_id
         description: AT route identifier (primary key)
@@ -23,7 +23,7 @@ models:
   - name: dim_stops
     description: >
       Stop dimension from GTFS static. Provides stop_name and coordinates
-      for vehicle position enrichment. Refreshed weekly via Airflow.
+      for vehicle position enrichment. Refreshed weekly via Databricks Workflow.
     columns:
       - name: stop_id
         description: AT stop identifier (primary key)

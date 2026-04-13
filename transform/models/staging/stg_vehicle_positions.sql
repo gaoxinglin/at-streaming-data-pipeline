@@ -21,8 +21,9 @@ cleaned as (
         cast(event_ts as date) as event_date,
         extract(hour from event_ts) as event_hour
     from source
-    where latitude between -90 and 90
-      and longitude between -180 and 180
+    where
+        latitude between -90 and 90
+        and longitude between -180 and 180
 )
 
 select * from cleaned

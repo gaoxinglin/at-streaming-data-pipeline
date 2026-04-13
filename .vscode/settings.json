@@ -1,0 +1,12 @@
+{
+    "duckdb.databases": [
+        {
+            "alias": "at_bronze",
+            "type": "file",
+            "path": "/Users/xinglingao/workshop/at-streaming-data-pipeline/data/at_bronze.duckdb",
+            "readOnly": true,
+            "attached": true
+        }
+    ],
+    "duckdb.defaultDatabase": "at_bronze"
+}

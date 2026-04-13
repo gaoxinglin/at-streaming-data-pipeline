@@ -12,7 +12,14 @@ from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    col, current_timestamp, expr, from_unixtime, lit, struct, to_date, to_json,
+    col,
+    current_timestamp,
+    expr,
+    from_unixtime,
+    lit,
+    struct,
+    to_date,
+    to_json,
     when,
 )
 from pyspark.sql.functions import uuid as spark_uuid
@@ -26,22 +33,19 @@ WATERMARK_DELAY = "10 minutes"
 
 def detect_delays(df: DataFrame) -> DataFrame:
     """Filter trip_updates with delay > 5 min and classify severity."""
-    return (
-        df.filter(col("delay") > DELAY_THRESHOLD)
-        .select(
-            spark_uuid().alias("event_id"),
-            "trip_id",
-            "route_id",
-            "delay",
-            when(col("delay") <= 600, lit("MODERATE"))     # 5-10 min
-            .when(col("delay") <= 1200, lit("HIGH"))       # 10-20 min
-            .otherwise(lit("SEVERE"))                      # 20+ min
-            .alias("severity"),
-            "start_time",
-            "start_date",
-            col("timestamp").alias("event_timestamp"),
-            current_timestamp().alias("detected_at"),
-        )
+    return df.filter(col("delay") > DELAY_THRESHOLD).select(
+        spark_uuid().alias("event_id"),
+        "trip_id",
+        "route_id",
+        "delay",
+        when(col("delay") <= 600, lit("MODERATE"))  # 5-10 min
+        .when(col("delay") <= 1200, lit("HIGH"))  # 10-20 min
+        .otherwise(lit("SEVERE"))  # 20+ min
+        .alias("severity"),
+        "start_time",
+        "start_date",
+        col("timestamp").alias("event_timestamp"),
+        current_timestamp().alias("detected_at"),
     )
 
 
@@ -65,17 +69,21 @@ if __name__ == "__main__":
     SINK_TOPIC = "at.alerts"
 
     spark = (
-        SparkSession.builder
-        .appName("delay_alert_detection")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
-                "org.apache.spark:spark-avro_2.13:4.1.1")
+        SparkSession.builder.appName("delay_alert_detection")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
+            "org.apache.spark:spark-avro_2.13:4.1.1",
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
 
     # fetch trip_update avro schema from SR
-    resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest", timeout=10)
+    resp = requests.get(
+        f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest",
+        timeout=10,
+    )
     resp.raise_for_status()
     avro_schema = resp.json()["schema"]
 
@@ -116,8 +124,7 @@ if __name__ == "__main__":
             # 1. Write to Kafka (at.alerts)
             kafka_ready = format_for_kafka(batch_df)
             (
-                kafka_ready.write
-                .format("kafka")
+                kafka_ready.write.format("kafka")
                 .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
                 .option("topic", SINK_TOPIC)
                 .save()
@@ -128,8 +135,7 @@ if __name__ == "__main__":
                 "event_date", to_date(col("event_timestamp"))
             )
             (
-                bronze_df.write
-                .format(OUTPUT_FORMAT)
+                bronze_df.write.format(OUTPUT_FORMAT)
                 .mode("append")
                 .partitionBy("event_date")
                 .save(f"{OUTPUT_PATH}/delay_alerts")
@@ -138,8 +144,7 @@ if __name__ == "__main__":
             batch_df.unpersist()
 
     query = (
-        alerts.writeStream
-        .foreachBatch(write_batch)
+        alerts.writeStream.foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/delay_alerts")
         .outputMode("append")
         .trigger(processingTime="30 seconds")
@@ -147,7 +152,10 @@ if __name__ == "__main__":
         .start()
     )
 
-    print(f"Delay alert job started — filtering {SOURCE_TOPIC} (delay > {DELAY_THRESHOLD}s) → {SINK_TOPIC}")
+    print(
+        f"Delay alert job started — filtering {SOURCE_TOPIC} (delay > {DELAY_THRESHOLD}s) → {SINK_TOPIC}"
+    )
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, query, job_label="delay_alerts")

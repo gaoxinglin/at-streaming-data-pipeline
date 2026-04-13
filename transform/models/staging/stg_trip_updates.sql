@@ -15,9 +15,9 @@ cleaned as (
         start_time,
         start_date,
         delay,
-        round(delay / 60.0, 2) as delay_minutes,
         event_ts,
         cast(event_ts as date) as event_date,
+        round(delay / 60.0, 2) as delay_minutes,
         extract(hour from event_ts) as event_hour
     from source
     where is_deleted = false

@@ -46,6 +46,6 @@ select
     c.trips_affected,
     c.avg_delay_during,
     c.detected_at
-from correlations c
-left join {{ ref('dim_routes') }} r using (route_id)
-left join alerts a using (alert_id)
+from correlations as c
+left join {{ ref('dim_routes') }} as r on c.route_id = r.route_id
+left join alerts as a using (alert_id)

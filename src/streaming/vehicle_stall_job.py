@@ -16,43 +16,59 @@ from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    col, current_timestamp, expr, from_unixtime, struct, to_date, to_json,
+    col,
+    current_timestamp,
+    expr,
+    from_unixtime,
+    struct,
+    to_date,
+    to_json,
 )
 from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
 from pyspark.sql.types import (
-    DoubleType, IntegerType, LongType, StringType, StructField, StructType,
+    DoubleType,
+    IntegerType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
     TimestampType,
 )
 
 
-STALL_THRESHOLD = 3      # consecutive readings within radius
-STALL_RADIUS_M = 10.0    # metres
+STALL_THRESHOLD = 3  # consecutive readings within radius
+STALL_RADIUS_M = 10.0  # metres
 STATE_TIMEOUT = "30 minutes"
 
 # schema for the stall events we emit
-STALL_EVENT_SCHEMA = StructType([
-    StructField("stall_id", StringType()),
-    StructField("vehicle_id", StringType()),
-    StructField("route_id", StringType()),
-    StructField("latitude", DoubleType()),
-    StructField("longitude", DoubleType()),
-    StructField("reading_count", IntegerType()),
-    StructField("first_seen", TimestampType()),
-    StructField("stall_detected_ts", LongType()),
-])
+STALL_EVENT_SCHEMA = StructType(
+    [
+        StructField("stall_id", StringType()),
+        StructField("vehicle_id", StringType()),
+        StructField("route_id", StringType()),
+        StructField("latitude", DoubleType()),
+        StructField("longitude", DoubleType()),
+        StructField("reading_count", IntegerType()),
+        StructField("first_seen", TimestampType()),
+        StructField("stall_detected_ts", LongType()),
+    ]
+)
 
 # schema for per-vehicle state stored between micro-batches
-STATE_SCHEMA = StructType([
-    StructField("anchor_lat", DoubleType()),
-    StructField("anchor_lon", DoubleType()),
-    StructField("count", IntegerType()),
-    StructField("first_ts", LongType()),
-    StructField("last_route_id", StringType()),
-    StructField("already_emitted", IntegerType()),  # bool as int for pandas compat
-])
+STATE_SCHEMA = StructType(
+    [
+        StructField("anchor_lat", DoubleType()),
+        StructField("anchor_lon", DoubleType()),
+        StructField("count", IntegerType()),
+        StructField("first_ts", LongType()),
+        StructField("last_route_id", StringType()),
+        StructField("already_emitted", IntegerType()),  # bool as int for pandas compat
+    ]
+)
 
 
 # --- haversine (importable for testing) ---
+
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance in metres between two GPS points."""
@@ -60,11 +76,15 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
+    )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 # --- stateful processing function ---
+
 
 def detect_stalls(
     key: tuple,
@@ -127,16 +147,18 @@ def detect_stalls(
 
             # emit stall event when threshold reached or ongoing stall grows
             if count >= STALL_THRESHOLD and count > already_emitted:
-                events.append({
-                    "stall_id": str(uuid.uuid4()),
-                    "vehicle_id": key[0],
-                    "route_id": last_route,
-                    "latitude": anchor_lat,
-                    "longitude": anchor_lon,
-                    "reading_count": count,
-                    "first_seen": pd.Timestamp(first_ts, unit="s"),
-                    "stall_detected_ts": ts,
-                })
+                events.append(
+                    {
+                        "stall_id": str(uuid.uuid4()),
+                        "vehicle_id": key[0],
+                        "route_id": last_route,
+                        "latitude": anchor_lat,
+                        "longitude": anchor_lon,
+                        "reading_count": count,
+                        "first_seen": pd.Timestamp(first_ts, unit="s"),
+                        "stall_detected_ts": ts,
+                    }
+                )
                 already_emitted = count
 
     # save state
@@ -169,17 +191,21 @@ if __name__ == "__main__":
     SINK_TOPIC = "at.alerts"
 
     spark = (
-        SparkSession.builder
-        .appName("vehicle_stall_detection")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
-                "org.apache.spark:spark-avro_2.13:4.1.1")
+        SparkSession.builder.appName("vehicle_stall_detection")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
+            "org.apache.spark:spark-avro_2.13:4.1.1",
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
 
     # fetch avro schema from SR
-    resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest", timeout=10)
+    resp = requests.get(
+        f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest",
+        timeout=10,
+    )
     resp.raise_for_status()
     avro_schema = resp.json()["schema"]
 
@@ -208,13 +234,15 @@ if __name__ == "__main__":
     )
 
     # input schema for applyInPandasWithState (must match flat columns minus grouping key)
-    input_schema = StructType([
-        StructField("vehicle_id", StringType()),
-        StructField("route_id", StringType()),
-        StructField("latitude", DoubleType()),
-        StructField("longitude", DoubleType()),
-        StructField("timestamp", LongType()),
-    ])
+    input_schema = StructType(
+        [
+            StructField("vehicle_id", StringType()),
+            StructField("route_id", StringType()),
+            StructField("latitude", DoubleType()),
+            StructField("longitude", DoubleType()),
+            StructField("timestamp", LongType()),
+        ]
+    )
 
     stall_events = flat.groupBy("vehicle_id").applyInPandasWithState(
         detect_stalls,
@@ -236,8 +264,7 @@ if __name__ == "__main__":
             # 1. Write to Kafka (at.alerts)
             kafka_ready = format_for_kafka(batch_df)
             (
-                kafka_ready.write
-                .format("kafka")
+                kafka_ready.write.format("kafka")
                 .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
                 .option("topic", SINK_TOPIC)
                 .save()
@@ -246,12 +273,9 @@ if __name__ == "__main__":
             # 2. Write to Bronze table (bronze.stall_events)
             bronze_df = batch_df.withColumn(
                 "detected_at", current_timestamp()
-            ).withColumn(
-                "event_date", to_date(from_unixtime(col("stall_detected_ts")))
-            )
+            ).withColumn("event_date", to_date(from_unixtime(col("stall_detected_ts"))))
             (
-                bronze_df.write
-                .format(OUTPUT_FORMAT)
+                bronze_df.write.format(OUTPUT_FORMAT)
                 .mode("append")
                 .partitionBy("event_date")
                 .save(f"{OUTPUT_PATH}/stall_events")
@@ -260,8 +284,7 @@ if __name__ == "__main__":
             batch_df.unpersist()
 
     query = (
-        stall_events.writeStream
-        .foreachBatch(write_batch)
+        stall_events.writeStream.foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/vehicle_stalls")
         .outputMode("update")
         .trigger(processingTime="30 seconds")
@@ -269,8 +292,11 @@ if __name__ == "__main__":
         .start()
     )
 
-    print(f"Vehicle stall detection started — "
-          f"radius={STALL_RADIUS_M}m, threshold={STALL_THRESHOLD} readings, timeout={STATE_TIMEOUT}")
+    print(
+        f"Vehicle stall detection started — "
+        f"radius={STALL_RADIUS_M}m, threshold={STALL_THRESHOLD} readings, timeout={STATE_TIMEOUT}"
+    )
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, query, job_label="vehicle_stalls")

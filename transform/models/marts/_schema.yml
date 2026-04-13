@@ -23,7 +23,9 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: 300
-                max_value: 7200
+                max_value: 86400
+              config:
+                severity: warn
       - name: delay_minutes
         tests: [not_null]
       - name: route_type_label

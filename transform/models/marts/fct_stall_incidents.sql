@@ -37,5 +37,5 @@ select
     s.longitude,
     s.stall_duration_s,
     s.detected_at
-from stalls s
-left join {{ ref('dim_routes') }} r using (route_id)
+from stalls as s
+left join {{ ref('dim_routes') }} as r on s.route_id = r.route_id

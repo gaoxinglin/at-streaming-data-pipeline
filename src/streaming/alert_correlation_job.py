@@ -21,8 +21,16 @@ from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    avg, col, countDistinct, current_timestamp, expr, from_unixtime, lit,
-    struct, to_date, to_json,
+    avg,
+    col,
+    countDistinct,
+    current_timestamp,
+    expr,
+    from_unixtime,
+    lit,
+    struct,
+    to_date,
+    to_json,
 )
 from pyspark.sql.functions import uuid as spark_uuid
 
@@ -42,8 +50,10 @@ WATERMARK_TRIP_UPDATES = "10 minutes"
 
 # --- join logic (importable for testing) ---
 
+
 def correlate_alerts_with_positions(
-    alerts: DataFrame, positions: DataFrame,
+    alerts: DataFrame,
+    positions: DataFrame,
 ) -> DataFrame:
     """
     Join service_alerts with vehicle_positions on route_id within a time window.
@@ -57,10 +67,12 @@ def correlate_alerts_with_positions(
         .join(
             positions.alias("v"),
             (col("a.route_id") == col("v.route_id"))
-            & (col("v.event_ts").between(
-                col("a.event_ts") - expr(f"interval {JOIN_WINDOW}"),
-                col("a.event_ts") + expr(f"interval {JOIN_WINDOW}"),
-            )),
+            & (
+                col("v.event_ts").between(
+                    col("a.event_ts") - expr(f"interval {JOIN_WINDOW}"),
+                    col("a.event_ts") + expr(f"interval {JOIN_WINDOW}"),
+                )
+            ),
             "inner",
         )
         .select(
@@ -83,7 +95,8 @@ def correlate_alerts_with_positions(
 
 
 def enrich_with_trip_updates(
-    correlated: DataFrame, trip_updates: DataFrame,
+    correlated: DataFrame,
+    trip_updates: DataFrame,
 ) -> DataFrame:
     """
     Enrich alert-vehicle correlations with delay info from trip_updates.
@@ -98,10 +111,12 @@ def enrich_with_trip_updates(
         .join(
             trip_updates.alias("t"),
             (col("c.trip_id") == col("t.trip_id"))
-            & (col("t.event_ts").between(
-                col("c.event_ts") - expr(f"interval {JOIN_WINDOW}"),
-                col("c.event_ts") + expr(f"interval {JOIN_WINDOW}"),
-            )),
+            & (
+                col("t.event_ts").between(
+                    col("c.event_ts") - expr(f"interval {JOIN_WINDOW}"),
+                    col("c.event_ts") + expr(f"interval {JOIN_WINDOW}"),
+                )
+            ),
             "inner",
         )
         .select(
@@ -155,11 +170,12 @@ if __name__ == "__main__":
     SINK_TOPIC = "at.alerts"
 
     spark = (
-        SparkSession.builder
-        .appName("alert_correlation")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
-                "org.apache.spark:spark-avro_2.13:4.1.1")
+        SparkSession.builder.appName("alert_correlation")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
+            "org.apache.spark:spark-avro_2.13:4.1.1",
+        )
         .config("spark.driver.memory", "2g")
         .config("spark.sql.shuffle.partitions", "10")
         .getOrCreate()
@@ -170,7 +186,9 @@ if __name__ == "__main__":
     topics = ["at.service_alerts", "at.vehicle_positions", "at.trip_updates"]
     schemas = {}
     for topic in topics:
-        resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest", timeout=10)
+        resp = requests.get(
+            f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest", timeout=10
+        )
         resp.raise_for_status()
         schemas[topic] = resp.json()["schema"]
 
@@ -208,9 +226,9 @@ if __name__ == "__main__":
 
     # Alerts WITH route_id → join pipeline
     alerts = (
-        sa_flat
-        .filter(col("route_id").isNotNull())
-        .withWatermark("event_ts", WATERMARK_ALERTS)
+        sa_flat.filter(col("route_id").isNotNull()).withWatermark(
+            "event_ts", WATERMARK_ALERTS
+        )
         # PRD edge case: deduplicate by (alert_id, route_id) to prevent
         # cartesian explosion from alert storms.
         .dropDuplicatesWithinWatermark(["alert_id", "route_id"])
@@ -219,16 +237,13 @@ if __name__ == "__main__":
     # Alerts WITHOUT route_id → pass through directly (network-wide alerts)
     # PRD: "Network-wide alerts are passed through to at.alerts topic
     # directly without vehicle/trip correlation."
-    network_alerts = (
-        sa_flat
-        .filter(col("route_id").isNull())
-        .withWatermark("event_ts", WATERMARK_ALERTS)
+    network_alerts = sa_flat.filter(col("route_id").isNull()).withWatermark(
+        "event_ts", WATERMARK_ALERTS
     )
 
     vp_raw = parse_avro(read_stream("at.vehicle_positions"), "at.vehicle_positions")
     positions = (
-        vp_raw
-        .select(
+        vp_raw.select(
             col("data.vehicle_id").alias("vehicle_id"),
             col("data.trip_id").alias("trip_id"),
             col("data.route_id").alias("route_id"),
@@ -243,8 +258,7 @@ if __name__ == "__main__":
 
     tu_raw = parse_avro(read_stream("at.trip_updates"), "at.trip_updates")
     trip_updates = (
-        tu_raw
-        .select(
+        tu_raw.select(
             col("data.trip_id").alias("trip_id"),
             col("data.route_id").alias("route_id"),
             col("data.delay").alias("delay"),
@@ -271,8 +285,7 @@ if __name__ == "__main__":
             # 1. Write to Kafka (at.alerts)
             kafka_ready = format_for_kafka(batch_df)
             (
-                kafka_ready.write
-                .format("kafka")
+                kafka_ready.write.format("kafka")
                 .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
                 .option("topic", SINK_TOPIC)
                 .save()
@@ -284,8 +297,7 @@ if __name__ == "__main__":
                 "event_date", to_date(current_timestamp())
             )
             (
-                bronze_df.write
-                .format(OUTPUT_FORMAT)
+                bronze_df.write.format(OUTPUT_FORMAT)
                 .mode("append")
                 .partitionBy("event_date")
                 .save(f"{OUTPUT_PATH}/alert_correlations")
@@ -294,8 +306,7 @@ if __name__ == "__main__":
             batch_df.unpersist()
 
     query = (
-        enriched.writeStream
-        .foreachBatch(write_correlation_batch)
+        enriched.writeStream.foreachBatch(write_correlation_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/alert_correlations")
         .outputMode("append")
         .trigger(processingTime="30 seconds")
@@ -305,22 +316,22 @@ if __name__ == "__main__":
 
     # --- pass-through query for network-wide alerts (no route_id) ---
     network_query = (
-        network_alerts
-        .select(
+        network_alerts.select(
             lit("network_alert").cast("string").alias("key"),
-            to_json(struct(
-                lit("network_alert").alias("alert_type"),
-                col("alert_id"),
-                col("cause"),
-                col("effect"),
-                col("header_text"),
-                col("description_text"),
-                col("event_ts"),
-                current_timestamp().alias("detected_at"),
-            )).alias("value"),
+            to_json(
+                struct(
+                    lit("network_alert").alias("alert_type"),
+                    col("alert_id"),
+                    col("cause"),
+                    col("effect"),
+                    col("header_text"),
+                    col("description_text"),
+                    col("event_ts"),
+                    current_timestamp().alias("detected_at"),
+                )
+            ).alias("value"),
         )
-        .writeStream
-        .format("kafka")
+        .writeStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
         .option("topic", SINK_TOPIC)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/network_alerts_passthrough")
@@ -331,8 +342,11 @@ if __name__ == "__main__":
     )
 
     print(f"Alert correlation job started — 3-stream join, window={JOIN_WINDOW}")
-    print(f"  Watermarks: alerts={WATERMARK_ALERTS}, positions={WATERMARK_POSITIONS}, "
-          f"trip_updates={WATERMARK_TRIP_UPDATES}")
+    print(
+        f"  Watermarks: alerts={WATERMARK_ALERTS}, positions={WATERMARK_POSITIONS}, "
+        f"trip_updates={WATERMARK_TRIP_UPDATES}"
+    )
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, query, network_query, job_label="alert_correlation")

@@ -12,9 +12,10 @@ cleaned as (
         stop_lon,
         stop_code
     from source
-    where stop_id is not null
-      and stop_lat between -48 and -34  -- NZ latitude range
-      and stop_lon between 166 and 179  -- NZ longitude range
+    where
+        stop_id is not null
+        and stop_lat between -48 and -34  -- NZ latitude range
+        and stop_lon between 166 and 179  -- NZ longitude range
 )
 
 select * from cleaned

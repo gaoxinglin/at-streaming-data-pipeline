@@ -38,5 +38,5 @@ select
     d.delay,
     d.delay_minutes,
     d.event_ts
-from delays d
-left join {{ ref('dim_routes') }} r using (route_id)
+from delays as d
+left join {{ ref('dim_routes') }} as r on d.route_id = r.route_id

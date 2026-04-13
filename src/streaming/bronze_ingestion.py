@@ -10,6 +10,7 @@ from pyspark.sql.functions import uuid as spark_uuid
 
 # --- enrichment functions (importable for testing) ---
 
+
 def enrich_vehicle_positions(df: DataFrame) -> DataFrame:
     return df.select(
         spark_uuid().alias("event_id"),
@@ -61,7 +62,9 @@ def enrich_service_alerts(df: DataFrame) -> DataFrame:
         "effect",
         "header_text",
         "description_text",
-        from_unixtime("active_period_start").cast("timestamp").alias("active_period_start"),
+        from_unixtime("active_period_start")
+        .cast("timestamp")
+        .alias("active_period_start"),
         from_unixtime("active_period_end").cast("timestamp").alias("active_period_end"),
         from_unixtime("timestamp").cast("timestamp").alias("event_ts"),
         "_raw_payload",
@@ -80,29 +83,47 @@ TOPIC_CONFIG = {
     "at.vehicle_positions": {
         "key_alias": "vehicle_id",
         "flatten": [
-            "data.vehicle_id", "data.trip_id", "data.route_id",
-            "data.latitude", "data.longitude", "data.bearing", "data.speed",
-            "data.current_stop_sequence", "data.stop_id", "data.current_status",
-            "data.congestion_level", "data.occupancy_status",
+            "data.vehicle_id",
+            "data.trip_id",
+            "data.route_id",
+            "data.latitude",
+            "data.longitude",
+            "data.bearing",
+            "data.speed",
+            "data.current_stop_sequence",
+            "data.stop_id",
+            "data.current_status",
+            "data.congestion_level",
+            "data.occupancy_status",
             "data.timestamp",
         ],
     },
     "at.trip_updates": {
         "key_alias": "trip_id",
         "flatten": [
-            "data.id", "data.trip_id", "data.route_id",
-            "data.direction_id", "data.start_time", "data.start_date",
-            "data.schedule_relationship", "data.delay",
-            "data.timestamp", "data.is_deleted",
+            "data.id",
+            "data.trip_id",
+            "data.route_id",
+            "data.direction_id",
+            "data.start_time",
+            "data.start_date",
+            "data.schedule_relationship",
+            "data.delay",
+            "data.timestamp",
+            "data.is_deleted",
         ],
     },
     "at.service_alerts": {
         "key_alias": "alert_id",
         "flatten": [
-            "data.id", "data.route_id",
-            "data.cause", "data.effect",
-            "data.header_text", "data.description_text",
-            "data.active_period_start", "data.active_period_end",
+            "data.id",
+            "data.route_id",
+            "data.cause",
+            "data.effect",
+            "data.header_text",
+            "data.description_text",
+            "data.active_period_start",
+            "data.active_period_end",
             "data.timestamp",
         ],
     },
@@ -120,11 +141,12 @@ if __name__ == "__main__":
     TOPICS = list(TOPIC_CONFIG.keys())
 
     spark = (
-        SparkSession.builder
-        .appName("bronze_ingestion")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
-                "org.apache.spark:spark-avro_2.13:4.1.1")
+        SparkSession.builder.appName("bronze_ingestion")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
+            "org.apache.spark:spark-avro_2.13:4.1.1",
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
@@ -132,14 +154,18 @@ if __name__ == "__main__":
     # fetch schemas from SR
     schemas = {}
     for topic in TOPICS:
-        resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest", timeout=10)
+        resp = requests.get(
+            f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest", timeout=10
+        )
         resp.raise_for_status()
         schemas[topic] = resp.json()["schema"]
 
     # start one streaming query per topic
     queries = {}
     for topic in TOPICS:
-        table_name = topic.replace("at.", "")  # vehicle_positions, trip_updates, service_alerts
+        table_name = topic.replace(
+            "at.", ""
+        )  # vehicle_positions, trip_updates, service_alerts
         cfg = TOPIC_CONFIG[topic]
 
         raw = (
@@ -166,8 +192,7 @@ if __name__ == "__main__":
         enriched = ENRICH_FNS[topic](flat)
 
         q = (
-            enriched.writeStream
-            .format(OUTPUT_FORMAT)
+            enriched.writeStream.format(OUTPUT_FORMAT)
             .option("path", f"{OUTPUT_BASE}/{table_name}")
             .option("checkpointLocation", f"{CHECKPOINT_BASE}/{table_name}")
             .partitionBy("event_date")
@@ -180,4 +205,5 @@ if __name__ == "__main__":
         print(f"Started query: {table_name}")
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, *queries.values(), job_label="bronze_ingestion")

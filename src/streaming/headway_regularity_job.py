@@ -20,8 +20,19 @@ from dotenv import load_dotenv
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    array_sort, col, collect_list, current_timestamp, expr, from_unixtime,
-    lit, size, struct, to_date, to_json, when, window,
+    array_sort,
+    col,
+    collect_list,
+    current_timestamp,
+    expr,
+    from_unixtime,
+    lit,
+    size,
+    struct,
+    to_date,
+    to_json,
+    when,
+    window,
 )
 
 
@@ -59,21 +70,21 @@ def compute_headway_regularity(df: DataFrame) -> DataFrame:
     )
 
     grouped = (
-        enriched
-        .groupBy(
+        enriched.groupBy(
             window(col("event_ts"), WINDOW_DURATION, SLIDE_INTERVAL),
             "route_id",
             "direction_id",
         )
         .agg(
-            array_sort(collect_list(col("actual_departure_s"))).alias("sorted_departures"),
+            array_sort(collect_list(col("actual_departure_s"))).alias(
+                "sorted_departures"
+            ),
         )
         .withColumn("trip_count", size(col("sorted_departures")))
     )
 
     with_headways = (
-        grouped
-        .withColumn(
+        grouped.withColumn(
             "headways",
             expr(
                 "case when size(sorted_departures) >= 2 then "
@@ -102,32 +113,39 @@ def compute_headway_regularity(df: DataFrame) -> DataFrame:
         )
         .withColumn(
             "headway_cv_raw",
-            when(col("headway_mean_s") > 0, col("headway_stddev_s") / col("headway_mean_s")),
+            when(
+                col("headway_mean_s") > 0,
+                col("headway_stddev_s") / col("headway_mean_s"),
+            ),
         )
     )
 
-    return (
-        with_headways
-        .select(
-            col("window.start").alias("window_start"),
-            col("window.end").alias("window_end"),
-            "route_id",
-            "direction_id",
-            "trip_count",
-            "headway_mean_s",
-            "headway_stddev_s",
-            when(col("trip_count") >= 3, col("headway_cv_raw")).otherwise(lit(None)).alias("headway_cv"),
-            when((col("trip_count") >= 3) & (col("headway_cv_raw") > BUNCHING_CV_THRESHOLD), lit(True))
-            .otherwise(lit(False))
-            .alias("is_bunching"),
+    return with_headways.select(
+        col("window.start").alias("window_start"),
+        col("window.end").alias("window_end"),
+        "route_id",
+        "direction_id",
+        "trip_count",
+        "headway_mean_s",
+        "headway_stddev_s",
+        when(col("trip_count") >= 3, col("headway_cv_raw"))
+        .otherwise(lit(None))
+        .alias("headway_cv"),
+        when(
+            (col("trip_count") >= 3) & (col("headway_cv_raw") > BUNCHING_CV_THRESHOLD),
+            lit(True),
         )
+        .otherwise(lit(False))
+        .alias("is_bunching"),
     )
 
 
 def format_for_kafka(df: DataFrame) -> DataFrame:
     """Prepare headway metrics for Kafka sink: key + JSON value."""
     return df.select(
-        expr("concat(route_id, ':', cast(direction_id as string))").cast("string").alias("key"),
+        expr("concat(route_id, ':', cast(direction_id as string))")
+        .cast("string")
+        .alias("key"),
         to_json(struct("*")).alias("value"),
     )
 
@@ -145,17 +163,21 @@ if __name__ == "__main__":
     ALERTS_TOPIC = "at.alerts"
 
     spark = (
-        SparkSession.builder
-        .appName("headway_regularity")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
-                "org.apache.spark:spark-avro_2.13:4.1.1")
+        SparkSession.builder.appName("headway_regularity")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
+            "org.apache.spark:spark-avro_2.13:4.1.1",
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
 
     # fetch trip_update avro schema from SR
-    resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest", timeout=10)
+    resp = requests.get(
+        f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest",
+        timeout=10,
+    )
     resp.raise_for_status()
     avro_schema = resp.json()["schema"]
 
@@ -209,8 +231,7 @@ if __name__ == "__main__":
             # 1. Write all metrics to Kafka (at.headway_metrics)
             kafka_df = format_for_kafka(batch_df)
             (
-                kafka_df.write
-                .format("kafka")
+                kafka_df.write.format("kafka")
                 .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
                 .option("topic", SINK_TOPIC)
                 .save()
@@ -221,8 +242,7 @@ if __name__ == "__main__":
             # data arrives. The dbt staging model handles deduplication.
             bronze_df = batch_df.withColumn("event_date", to_date(col("window_start")))
             (
-                bronze_df.write
-                .format(OUTPUT_FORMAT)
+                bronze_df.write.format(OUTPUT_FORMAT)
                 .mode("append")
                 .partitionBy("event_date")
                 .save(f"{OUTPUT_PATH}/headway_metrics")
@@ -234,20 +254,21 @@ if __name__ == "__main__":
             if not bunching.isEmpty():
                 bunching_alerts = bunching.select(
                     col("route_id").cast("string").alias("key"),
-                    to_json(struct(
-                        lit("bunching_alert").alias("alert_type"),
-                        col("route_id"),
-                        col("direction_id"),
-                        col("headway_cv"),
-                        col("trip_count"),
-                        col("window_start"),
-                        col("window_end"),
-                        current_timestamp().alias("detected_at"),
-                    )).alias("value"),
+                    to_json(
+                        struct(
+                            lit("bunching_alert").alias("alert_type"),
+                            col("route_id"),
+                            col("direction_id"),
+                            col("headway_cv"),
+                            col("trip_count"),
+                            col("window_start"),
+                            col("window_end"),
+                            current_timestamp().alias("detected_at"),
+                        )
+                    ).alias("value"),
                 )
                 (
-                    bunching_alerts.write
-                    .format("kafka")
+                    bunching_alerts.write.format("kafka")
                     .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
                     .option("topic", ALERTS_TOPIC)
                     .save()
@@ -259,8 +280,7 @@ if __name__ == "__main__":
     # is updated as new data arrives, emitted when the watermark advances.
     # foreachBatch enables writing to multiple sinks per micro-batch.
     query = (
-        headway_metrics.writeStream
-        .outputMode("update")
+        headway_metrics.writeStream.outputMode("update")
         .foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/headway_metrics")
         .trigger(processingTime="30 seconds")
@@ -268,8 +288,11 @@ if __name__ == "__main__":
         .start()
     )
 
-    print(f"Headway regularity job started — "
-          f"window={WINDOW_DURATION}, slide={SLIDE_INTERVAL}, watermark={WATERMARK_DELAY}")
+    print(
+        f"Headway regularity job started — "
+        f"window={WINDOW_DURATION}, slide={SLIDE_INTERVAL}, watermark={WATERMARK_DELAY}"
+    )
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, query, job_label="headway_regularity")

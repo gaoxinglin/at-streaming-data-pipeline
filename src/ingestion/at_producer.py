@@ -7,7 +7,11 @@ import requests
 from confluent_kafka import Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
-from confluent_kafka.serialization import MessageField, SerializationContext, StringSerializer
+from confluent_kafka.serialization import (
+    MessageField,
+    SerializationContext,
+    StringSerializer,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,10 +20,12 @@ AT_API_KEY = os.environ["AT_API_KEY"]
 AT_BASE_URL = os.getenv("AT_BASE_URL", "https://api.at.govt.nz/realtime/legacy")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
-POLL_PEAK = int(os.getenv("POLL_INTERVAL_PEAK", "30"))           # 06:00-09:00, 15:00-18:30
-POLL_SHOULDER = int(os.getenv("POLL_INTERVAL_SHOULDER", "60"))   # 09:00-15:00, 18:30-22:00
-POLL_OFFPEAK = int(os.getenv("POLL_INTERVAL_OFFPEAK", "300"))   # 22:00-06:00
-POLL_ALERTS = int(os.getenv("POLL_INTERVAL_ALERTS", "300"))      # service alerts — fixed
+POLL_PEAK = int(os.getenv("POLL_INTERVAL_PEAK", "30"))  # 06:00-09:00, 15:00-18:30
+POLL_SHOULDER = int(
+    os.getenv("POLL_INTERVAL_SHOULDER", "60")
+)  # 09:00-15:00, 18:30-22:00
+POLL_OFFPEAK = int(os.getenv("POLL_INTERVAL_OFFPEAK", "300"))  # 22:00-06:00
+POLL_ALERTS = int(os.getenv("POLL_INTERVAL_ALERTS", "300"))  # service alerts — fixed
 
 
 def _realtime_interval():
@@ -28,10 +34,11 @@ def _realtime_interval():
     t = now.hour * 60 + now.minute  # minutes since midnight
     if (360 <= t < 540) or (900 <= t < 1110):  # 06:00-09:00, 15:00-18:30
         return POLL_PEAK
-    elif (1320 <= t or t < 360):  # 22:00-06:00
+    elif 1320 <= t or t < 360:  # 22:00-06:00
         return POLL_OFFPEAK
     else:
         return POLL_SHOULDER
+
 
 SCHEMAS_DIR = os.path.join(os.path.dirname(__file__), "schemas")
 
@@ -59,7 +66,9 @@ def _flatten_vehicle_position(entity):
         "stop_id": v.get("stop_id"),
         "current_status": v.get("current_status"),
         "congestion_level": v.get("congestion_level"),
-        "occupancy_status": str(v["occupancy_status"]) if "occupancy_status" in v else None,
+        "occupancy_status": (
+            str(v["occupancy_status"]) if "occupancy_status" in v else None
+        ),
         "timestamp": int(v["timestamp"]),
     }
 
@@ -94,8 +103,12 @@ def _flatten_service_alert(entity):
         "route_id": route_id,
         "cause": alert.get("cause"),
         "effect": alert.get("effect"),
-        "header_text": header.get("translation", [{}])[0].get("text") if header else None,
-        "description_text": desc.get("translation", [{}])[0].get("text") if desc else None,
+        "header_text": (
+            header.get("translation", [{}])[0].get("text") if header else None
+        ),
+        "description_text": (
+            desc.get("translation", [{}])[0].get("text") if desc else None
+        ),
         "active_period_start": period.get("start"),
         "active_period_end": period.get("end"),
         "timestamp": int(entity["timestamp"] if "timestamp" in entity else time.time()),
@@ -155,8 +168,10 @@ def main():
         schema_str = _load_schema(cfg["schema_file"])
         serializers[topic] = AvroSerializer(sr_client, schema_str)
 
-    print(f"Starting AT producer → {len(FEEDS)} feeds, "
-          f"peak={POLL_PEAK}s / shoulder={POLL_SHOULDER}s / offpeak={POLL_OFFPEAK}s / alerts={POLL_ALERTS}s")
+    print(
+        f"Starting AT producer → {len(FEEDS)} feeds, "
+        f"peak={POLL_PEAK}s / shoulder={POLL_SHOULDER}s / offpeak={POLL_OFFPEAK}s / alerts={POLL_ALERTS}s"
+    )
 
     _running = True
 
@@ -207,8 +222,7 @@ def main():
             # sleep until the next feed is due
             now = time.monotonic()
             next_due = min(
-                last_poll[t] + cfg["interval"]() - now
-                for t, cfg in FEEDS.items()
+                last_poll[t] + cfg["interval"]() - now for t, cfg in FEEDS.items()
             )
             sleep_for = max(1, next_due)
             time.sleep(sleep_for)

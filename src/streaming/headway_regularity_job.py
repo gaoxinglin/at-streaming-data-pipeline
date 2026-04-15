@@ -137,6 +137,8 @@ if __name__ == "__main__":
 
     KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
+    STARTING_OFFSETS = os.getenv("KAFKA_STARTING_OFFSETS", "latest")
+    MAX_OFFSETS_PER_TRIGGER = int(os.getenv("TRIP_UPDATES_MAX_OFFSETS_PER_TRIGGER", "2000"))
     CHECKPOINT_BASE = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints")
     OUTPUT_PATH = os.getenv("OUTPUT_PATH", "/tmp/bronze")
     OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "parquet")
@@ -150,6 +152,7 @@ if __name__ == "__main__":
         .config("spark.jars.packages",
                 "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
                 "org.apache.spark:spark-avro_2.13:4.1.1")
+        .config("spark.sql.shuffle.partitions", os.getenv("SPARK_SQL_SHUFFLE_PARTITIONS", "4"))
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
@@ -164,8 +167,8 @@ if __name__ == "__main__":
         spark.readStream.format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
         .option("subscribe", SOURCE_TOPIC)
-        .option("startingOffsets", "earliest")
-        .option("maxOffsetsPerTrigger", 10000)
+        .option("startingOffsets", STARTING_OFFSETS)
+        .option("maxOffsetsPerTrigger", MAX_OFFSETS_PER_TRIGGER)
         .load()
     )
 

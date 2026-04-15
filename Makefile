@@ -1,4 +1,4 @@
-.PHONY: kafka-up kafka-down run-producer run-streaming run-bronze run-q1 run-q2 run-q3 run-q4 query-bronze sync-duckdb dbt-deps dbt-seed dbt-run dbt-test dbt-compile dbt-staging dbt-docs test lint
+.PHONY: kafka-up kafka-down run-producer run-streaming run-bronze run-q1 run-q2 run-q3 run-q4 query-bronze sync-duckdb dbt-deps dbt-seed dbt-run dbt-test dbt-compile dbt-staging dbt-docs test lint format
 
 # --- Infrastructure ---
 
@@ -72,4 +72,11 @@ test:
 	PYSPARK_PYTHON=$$(pwd)/.venv/bin/python .venv/bin/python -m pytest tests/ -v
 
 lint:
+	.venv/bin/black --check src/ tests/
 	.venv/bin/ruff check src/ tests/
+	cd transform && ../.venv/bin/sqlfluff lint models/
+
+format:
+	.venv/bin/black src/ tests/
+	.venv/bin/ruff check --fix src/ tests/
+	cd transform && ../.venv/bin/sqlfluff fix models/ --force

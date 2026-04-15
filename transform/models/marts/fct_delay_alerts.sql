@@ -21,10 +21,11 @@ with delays as (
         delay_minutes,
         event_ts
     from {{ ref('stg_trip_updates') }}
-    where delay > 300  -- 5 minutes in seconds
-    {% if is_incremental() %}
-      and event_date > (select max(event_date) from {{ this }})
-    {% endif %}
+    where
+        delay > 300  -- 5 minutes in seconds
+        {% if is_incremental() %}
+            and event_date > (select max(event_date) from {{ this }})
+        {% endif %}
 )
 
 select

@@ -132,7 +132,7 @@ if __name__ == "__main__":
 
             # 2. Write to Bronze table (bronze.delay_alerts)
             bronze_df = batch_df.withColumn(
-                "event_date", to_date(col("event_timestamp"))
+                "event_date", to_date(from_unixtime(col("event_timestamp")))
             )
             (
                 bronze_df.write.format(OUTPUT_FORMAT)

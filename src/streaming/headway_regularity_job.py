@@ -169,6 +169,9 @@ if __name__ == "__main__":
             "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
             "org.apache.spark:spark-avro_2.13:4.1.1",
         )
+        # Control chars in Avro data can break Janino codegen (SPARK-44382).
+        # Interpreted mode is ~10-20% slower but avoids the crash entirely.
+        .config("spark.sql.codegen.wholeStage", "false")
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")

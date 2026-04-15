@@ -127,9 +127,15 @@ FEEDS = {
 }
 
 
+# reuse TCP connections across polls — prevents ephemeral port exhaustion
+# on long-running sessions (each requests.get() without a Session opens a
+# new socket that sits in TIME_WAIT for 120s after close)
+_session = requests.Session()
+_session.headers["Ocp-Apim-Subscription-Key"] = AT_API_KEY
+
+
 def fetch_entities(url):
-    headers = {"Ocp-Apim-Subscription-Key": AT_API_KEY}
-    resp = requests.get(url, headers=headers, timeout=10)
+    resp = _session.get(url, timeout=10)
     resp.raise_for_status()
     return resp.json()["response"]["entity"]
 

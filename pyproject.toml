@@ -13,6 +13,7 @@ dependencies = [
     "pyarrow>=23.0.1",
     "duckdb>=1.2.0",
     "dbt-duckdb>=1.9.0",
+    "streamlit>=1.35.0",
 ]
 
 [tool.pytest.ini_options]

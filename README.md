@@ -122,6 +122,12 @@ make run-producer
 
 Streaming output lands in `./data/bronze/` (Parquet) with checkpoints in `./data/checkpoints/`. Both paths are configurable via `.env`.
 
+For local demos, `.env.example` defaults to `KAFKA_STARTING_OFFSETS=latest` plus lower
+per-trigger caps so WSL doesn't have to chew through old backlog on first boot.
+Once a query has a checkpoint, Spark resumes from the checkpointed offsets and
+ignores `startingOffsets`. To replay from the beginning, stop the query, delete
+that query's checkpoint directory, then switch `KAFKA_STARTING_OFFSETS=earliest`.
+
 ### Run Streaming Jobs
 
 Each job runs as a separate long-lived process. All support graceful shutdown via `Ctrl+C`.

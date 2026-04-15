@@ -114,6 +114,8 @@ if __name__ == "__main__":
 
     KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
+    STARTING_OFFSETS = os.getenv("KAFKA_STARTING_OFFSETS", "latest")
+    MAX_OFFSETS_PER_TRIGGER = int(os.getenv("BRONZE_MAX_OFFSETS_PER_TRIGGER", "5000"))
     OUTPUT_BASE = os.getenv("BRONZE_OUTPUT_PATH", "/tmp/bronze")
     CHECKPOINT_BASE = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints")
     OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "parquet")
@@ -146,8 +148,8 @@ if __name__ == "__main__":
             spark.readStream.format("kafka")
             .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
             .option("subscribe", topic)
-            .option("startingOffsets", "earliest")
-            .option("maxOffsetsPerTrigger", 10000)
+            .option("startingOffsets", STARTING_OFFSETS)
+            .option("maxOffsetsPerTrigger", MAX_OFFSETS_PER_TRIGGER)
             .load()
         )
 

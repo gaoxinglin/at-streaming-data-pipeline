@@ -74,9 +74,10 @@ def correlate_alerts_with_positions(
             col("v.latitude"),
             col("v.longitude"),
             col("v.speed"),
-            col("a.event_ts").alias("alert_time"),
-            col("v.event_ts").alias("vehicle_time"),
-            # carry watermarked event_ts through for second join
+            # Keep only one event-time column with watermark semantics.
+            # Other timestamps are materialized as plain timestamp fields.
+            col("a.event_ts").cast("timestamp").alias("alert_time"),
+            col("v.event_ts").cast("timestamp").alias("vehicle_time"),
             col("v.event_ts").alias("event_ts"),
         )
     )

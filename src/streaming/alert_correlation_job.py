@@ -74,10 +74,11 @@ def correlate_alerts_with_positions(
             col("v.latitude"),
             col("v.longitude"),
             col("v.speed"),
-            # Keep only one event-time column with watermark semantics.
-            # Other timestamps are materialized as plain timestamp fields.
-            col("a.event_ts").cast("timestamp").alias("alert_time"),
-            col("v.event_ts").cast("timestamp").alias("vehicle_time"),
+            # Materialize display timestamps without watermark metadata.
+            # A no-op cast(timestamp->timestamp) can preserve event-time markers,
+            # so we force a non-noop roundtrip via epoch seconds.
+            from_unixtime(col("a.event_ts").cast("long")).cast("timestamp").alias("alert_time"),
+            from_unixtime(col("v.event_ts").cast("long")).cast("timestamp").alias("vehicle_time"),
             col("v.event_ts").alias("event_ts"),
         )
     )
@@ -119,7 +120,7 @@ def enrich_with_trip_updates(
             "c.alert_time",
             "c.vehicle_time",
             col("t.delay"),
-            col("t.event_ts").alias("trip_update_time"),
+            from_unixtime(col("t.event_ts").cast("long")).cast("timestamp").alias("trip_update_time"),
         )
     )
 

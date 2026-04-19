@@ -28,6 +28,25 @@ A streaming-first data pipeline that ingests Auckland Transport GTFS-Realtime da
 | Databricks Workflow (weekly dim refresh)    | Planned |
 | Power BI dashboard                          | Planned |
 
+## Scope and Non-Goals
+
+This repository is primarily a **streaming data pipeline portfolio/demo project**.
+Its main objective is to demonstrate end-to-end streaming architecture and implementation patterns, not to provide production-certified transit business logic.
+
+**In scope:**
+- Kafka ingestion + schema contracts
+- Spark Structured Streaming patterns (stateless, stateful, windowed, multi-stream joins)
+- Medallion-style storage flow and dbt historical modeling
+- Local/cloud parity and reproducible developer workflow
+
+**Out of scope (for now):**
+- Full domain calibration of every detection threshold
+- Production-grade precision/recall tuning for all anomaly rules
+- Operational SLA ownership for alert quality
+
+**Known limitation example:**
+- Q2 vehicle stall detection can over-count in some conditions. If you observe spikes (for example, 1000+ stall events in about an hour), treat that as a calibration gap in demo logic rather than a validated operational KPI.
+
 ## What It Does
 
 The pipeline answers **4 real-time operational questions**, each exercising a progressively more advanced Spark Streaming pattern:
@@ -44,6 +63,12 @@ Each question also has a **historical counterpart** — dbt rolls up the streami
 ## Architecture
 
 ![Architecture Diagram](docs/architecture.png)
+
+### Live Dashboard Preview
+
+Below is the Streamlit live view used to monitor Q1-Q4 outputs in near real time during local runs.
+
+![Streamlit Live Dashboard](docs/streamlit-live-dashboard.png)
 
 **Key architecture decisions:**
 - **Spark for live detection, dbt for historical rollups** — no Spark Batch layer. The Gold-layer queries are SQL `GROUP BY` aggregations; dbt handles them in seconds.

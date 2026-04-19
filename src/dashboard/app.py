@@ -12,7 +12,6 @@ Run with:
 import json
 import os
 import time
-from collections import defaultdict
 from datetime import datetime
 
 import pandas as pd
@@ -26,6 +25,21 @@ KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 POLL_MESSAGES = 200      # max messages to pull per refresh
 REFRESH_INTERVAL = 30     # seconds between auto-refresh
 HISTORY_WINDOW = 300     # keep last 5 minutes of messages in session state
+DISPLAY_TIMEZONE = "Pacific/Auckland"
+DISPLAY_TS_COLS = {
+    "detected_at",
+    "first_seen",
+    "stall_detected_ts",
+    "window_start",
+    "event_ts",
+    "trip_update_time",
+    "alert_time",
+    "vehicle_time",
+}
+EPOCH_SECOND_TS_COLS = {
+    "stall_detected_ts",
+    "event_timestamp",
+}
 
 st.set_page_config(
     page_title="AT Pipeline — Live",
@@ -95,12 +109,76 @@ def _severity_color(severity: str) -> str:
     return {"MODERATE": "🟡", "HIGH": "🟠", "SEVERE": "🔴"}.get(severity, "⚪")
 
 
-def _display_table(rows: list[dict], preferred_cols: list[str], sort_candidates: list[str]) -> None:
+def _dedupe_rows(rows: list[dict], key_cols: list[str]) -> list[dict]:
+    """Drop duplicate rows using the first key column that exists in the data."""
+    if not rows:
+        return rows
+
+    df = pd.DataFrame(rows).copy()
+    dedupe_col = next((col for col in key_cols if col in df.columns), None)
+    if dedupe_col:
+        # Keep the most recent message for each key.
+        df = df.drop_duplicates(subset=[dedupe_col], keep="last")
+    return df.to_dict("records")
+
+
+def _parse_ts_col(series: pd.Series, col_name: str) -> pd.Series:
+    """Parse mixed timestamp representations (ISO strings and epoch seconds)."""
+    numeric_first = col_name in EPOCH_SECOND_TS_COLS or "detected" in col_name.lower()
+    if numeric_first:
+        numeric = pd.to_numeric(series, errors="coerce")
+        if numeric.notna().any():
+            return pd.to_datetime(numeric, unit="s", errors="coerce", utc=True).dt.tz_convert(DISPLAY_TIMEZONE)
+
+    parsed = pd.to_datetime(series, errors="coerce")
+    if parsed.notna().any():
+        if getattr(parsed.dt, "tz", None) is not None:
+            return parsed.dt.tz_convert(DISPLAY_TIMEZONE)
+        return parsed.dt.tz_localize(DISPLAY_TIMEZONE)
+
+    numeric = pd.to_numeric(series, errors="coerce")
+    if numeric.notna().any():
+        return pd.to_datetime(numeric, unit="s", errors="coerce", utc=True).dt.tz_convert(DISPLAY_TIMEZONE)
+
+    return parsed
+
+
+def _display_table(
+    rows: list[dict],
+    preferred_cols: list[str],
+    sort_candidates: list[str],
+    dedup_cols: list[str] | None = None,
+    rename_map: dict[str, str] | None = None,
+) -> None:
     """Render a table without assuming every producer emits the same timestamp field."""
     df = pd.DataFrame(rows).copy()
 
+    if dedup_cols:
+        dedupe_col = next((col for col in dedup_cols if col in df.columns), None)
+        if dedupe_col:
+            df = df.drop_duplicates(subset=[dedupe_col], keep="last")
+
+    if rename_map:
+        df = df.rename(columns=rename_map)
+
+    for ts_col in DISPLAY_TS_COLS:
+        if ts_col in df.columns:
+            parsed = _parse_ts_col(df[ts_col], ts_col)
+            if parsed.notna().any():
+                # Normalize to a single 24h format for consistent table display.
+                # tz_localize(None) preserves the Auckland wall clock time.
+                try:
+                    parsed = parsed.dt.tz_localize(None)
+                except TypeError:
+                    pass
+                df[ts_col] = parsed.dt.strftime("%Y-%m-%d %H:%M:%S")
+
     if "_received_at" in df.columns:
-        df["received_at"] = pd.to_datetime(df["_received_at"], unit="s").dt.strftime("%H:%M:%S")
+        df["received_at"] = (
+            pd.to_datetime(df["_received_at"], unit="s", utc=True)
+            .dt.tz_convert(DISPLAY_TIMEZONE)
+            .dt.strftime("%Y-%m-%d %H:%M:%S")
+        )
 
     sort_col = next((col for col in sort_candidates if col in df.columns), None)
     if sort_col:
@@ -161,6 +239,9 @@ with tab_alerts:
         else:
             unknown.append(m)
 
+    delay_alerts = _dedupe_rows(delay_alerts, ["trip_id", "alert_id"])
+    stall_events = _dedupe_rows(stall_events, ["stall_id"])
+
     col1, col2, col3 = st.columns(3)
     col1.metric("Delay Alerts (Q1)", len(delay_alerts), help="Last 5 min")
     col2.metric("Stall Events (Q2)", len(stall_events), help="Last 5 min")
@@ -169,9 +250,27 @@ with tab_alerts:
     st.divider()
 
     # Q1 — Delay alerts
-    st.subheader("Q1 — Delay Alerts")
+    st.subheader("Q1 — Delay Alerts (delay in seconds)")
     if delay_alerts:
         df_d = pd.DataFrame(delay_alerts)
+
+        # Q1 focus: default to severe delays and optionally drill into one trip.
+        f1, f2 = st.columns(2)
+        severity_focus = f1.selectbox(
+            "Delay focus",
+            options=["SEVERE", "HIGH", "MODERATE", "ALL"],
+            index=0,
+            help="Default focus is SEVERE delay alerts.",
+        )
+        trip_options = ["ALL"] + sorted(df_d.get("trip_id", pd.Series(dtype=str)).dropna().astype(str).unique())
+        selected_trip = f2.selectbox("Trip", options=trip_options)
+
+        filtered_delay_alerts = delay_alerts
+        if severity_focus != "ALL":
+            filtered_delay_alerts = [m for m in filtered_delay_alerts if str(m.get("severity")) == severity_focus]
+        if selected_trip != "ALL":
+            filtered_delay_alerts = [m for m in filtered_delay_alerts if str(m.get("trip_id")) == selected_trip]
+
         # severity breakdown
         sev_counts = df_d.get("severity", pd.Series()).value_counts().reindex(
             ["MODERATE", "HIGH", "SEVERE"], fill_value=0
@@ -180,13 +279,14 @@ with tab_alerts:
         c1.metric("🟡 MODERATE", int(sev_counts.get("MODERATE", 0)))
         c2.metric("🟠 HIGH", int(sev_counts.get("HIGH", 0)))
         c3.metric("🔴 SEVERE", int(sev_counts.get("SEVERE", 0)))
+        st.caption(f"Showing {len(filtered_delay_alerts)} records after filters")
 
-        show_cols = [c for c in ["trip_id", "route_id", "delay", "severity", "detected_at"]
-                     if c in df_d.columns]
         _display_table(
-            delay_alerts,
-            preferred_cols=["trip_id", "route_id", "delay", "severity", "detected_at"],
+            filtered_delay_alerts,
+            preferred_cols=["alert_id", "trip_id", "route_id", "delay_s", "severity", "detected_at"],
             sort_candidates=["detected_at", "_received_at"],
+            dedup_cols=["trip_id", "alert_id"],
+            rename_map={"delay": "delay_s"},
         )
     else:
         st.info("No delay alerts in the last 5 minutes.")
@@ -200,6 +300,7 @@ with tab_alerts:
         _display_table(
             stall_events,
             preferred_cols=[
+                "stall_id",
                 "vehicle_id",
                 "route_id",
                 "reading_count",
@@ -210,6 +311,7 @@ with tab_alerts:
                 "detected_at",
             ],
             sort_candidates=["detected_at", "stall_detected_ts", "_received_at"],
+            dedup_cols=["stall_id"],
         )
     else:
         st.info("No stall events in the last 5 minutes.")
@@ -259,7 +361,7 @@ with tab_headway:
         st.divider()
 
         # bunching routes table
-        bunching = df_hw[df_hw.get("is_bunching", False) == True] if "is_bunching" in df_hw.columns else pd.DataFrame()
+        bunching = df_hw[df_hw.get("is_bunching", False)] if "is_bunching" in df_hw.columns else pd.DataFrame()
         if not bunching.empty:
             st.markdown("**Routes currently bunching:**")
             show_cols = [c for c in ["route_id", "direction_id", "headway_cv",

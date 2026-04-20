@@ -49,3 +49,16 @@ variable "budget_amount" {
   type        = number
   default     = 50
 }
+
+variable "github_username" {
+  description = "GitHub username for Databricks Repo checkout and git credential."
+  type        = string
+  default     = "gaoxinglin"
+}
+
+variable "github_pat" {
+  description = "GitHub Personal Access Token for private repo access. Set to empty string if repo is public."
+  type        = string
+  sensitive   = true
+  default     = ""
+}

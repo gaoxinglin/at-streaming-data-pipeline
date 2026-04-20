@@ -27,24 +27,43 @@ output "key_vault_name" {
   value = azurerm_key_vault.main.name
 }
 
+output "databricks_workspace_url" {
+  description = "Databricks workspace URL. Set as DATABRICKS_HOST in .env."
+  value       = "https://${azurerm_databricks_workspace.main.workspace_url}"
+}
+
+output "databricks_sp_client_id" {
+  description = "Service principal client ID for Spark OAuth config."
+  value       = azuread_application.databricks.client_id
+}
+
 output "next_steps" {
   description = "What to do after apply."
   value       = <<-EOT
 
-    1. Pull the producer connection string from Key Vault:
-         az keyvault secret show \
-           --vault-name ${azurerm_key_vault.main.name} \
-           --name eventhubs-connection-string \
-           --query value -o tsv
+    Phase 1 (Event Hubs + Storage):
+    1. Pull producer connection string:
+         az keyvault secret show --vault-name ${azurerm_key_vault.main.name} \
+           --name eventhubs-connection-string --query value -o tsv
 
-    2. Update repo .env:
-         KAFKA_BOOTSTRAP_SERVERS=${azurerm_eventhub_namespace.main.name}.servicebus.windows.net:9093
-         EVENTHUBS_CONNECTION_STRING=<the value from step 1>
+    Phase 2 (Databricks):
+    2. Open workspace: https://${azurerm_databricks_workspace.main.workspace_url}
 
-    3. Producer needs SASL_SSL config to talk to Event Hubs — see deploy/terraform/README.md
-       for the snippet (not in src/ yet on this branch).
+    3. Generate a PAT token in workspace UI:
+         User Settings → Developer → Access Tokens → Generate new token
+       Then store it:
+         az keyvault secret set --vault-name ${azurerm_key_vault.main.name} \
+           --name databricks-pat-token --value <token>
 
-    4. Watch capture land in:
-         abfss://capture@${azurerm_storage_account.lake.name}.dfs.core.windows.net/${azurerm_eventhub_namespace.main.name}/<topic>/...
+    4. Create Secret Scope backed by Key Vault:
+         databricks secrets create-scope at-pipeline \
+           --scope-backend-type AZURE_KEYVAULT \
+           --resource-id $(az keyvault show --name ${azurerm_key_vault.main.name} --query id -o tsv) \
+           --dns-name https://${azurerm_key_vault.main.name}.vault.azure.net/
+
+    5. Set env vars for dbt prod target:
+         DATABRICKS_HOST=https://${azurerm_databricks_workspace.main.workspace_url}
+         DATABRICKS_TOKEN=<PAT from step 3>
+         DATABRICKS_HTTP_PATH=<SQL Warehouse http_path — from workspace UI>
   EOT
 }

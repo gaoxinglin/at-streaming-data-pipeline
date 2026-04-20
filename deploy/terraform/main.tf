@@ -146,6 +146,82 @@ resource "azurerm_key_vault_secret" "at_api_key" {
   depends_on = [azurerm_role_assignment.kv_admin]
 }
 
+# --- Databricks workspace ---
+
+resource "azurerm_databricks_workspace" "main" {
+  name                        = "dbw-${var.project}-${var.environment}-${local.suffix}"
+  resource_group_name         = azurerm_resource_group.main.name
+  location                    = azurerm_resource_group.main.location
+  sku                         = "standard"
+  managed_resource_group_name = "rg-${var.project}-${var.environment}-managed"
+
+  tags = local.tags
+}
+
+# Service principal so Databricks clusters can authenticate to Azure resources
+# via OAuth (no storage keys, no HMAC). Credentials rotate on re-apply.
+resource "azuread_application" "databricks" {
+  display_name = "sp-${var.project}-${var.environment}-databricks"
+}
+
+resource "azuread_service_principal" "databricks" {
+  client_id = azuread_application.databricks.client_id
+}
+
+resource "azuread_service_principal_password" "databricks" {
+  service_principal_id = azuread_service_principal.databricks.id
+}
+
+# Databricks SP → read from Event Hubs (Spark Structured Streaming source)
+resource "azurerm_role_assignment" "dbw_to_eh" {
+  scope                = azurerm_eventhub_namespace.main.id
+  role_definition_name = "Azure Event Hubs Data Receiver"
+  principal_id         = azuread_service_principal.databricks.object_id
+}
+
+# Databricks SP → read/write Bronze, Silver, Gold, Checkpoints containers
+resource "azurerm_role_assignment" "dbw_to_storage" {
+  scope                = azurerm_storage_account.lake.id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azuread_service_principal.databricks.object_id
+}
+
+# Databricks SP → read secrets from Key Vault (used by Databricks secret scope)
+resource "azurerm_role_assignment" "dbw_to_kv" {
+  scope                = azurerm_key_vault.main.id
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = azuread_service_principal.databricks.object_id
+}
+
+# Store SP credentials + workspace URL in KV for Databricks secret scope + dbt/CI
+resource "azurerm_key_vault_secret" "databricks_host" {
+  name         = "databricks-host"
+  value        = "https://${azurerm_databricks_workspace.main.workspace_url}"
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.kv_admin]
+}
+
+resource "azurerm_key_vault_secret" "sp_tenant_id" {
+  name         = "databricks-sp-tenant-id"
+  value        = data.azurerm_client_config.current.tenant_id
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.kv_admin]
+}
+
+resource "azurerm_key_vault_secret" "sp_client_id" {
+  name         = "databricks-sp-client-id"
+  value        = azuread_application.databricks.client_id
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.kv_admin]
+}
+
+resource "azurerm_key_vault_secret" "sp_client_secret" {
+  name         = "databricks-sp-client-secret"
+  value        = azuread_service_principal_password.databricks.value
+  key_vault_id = azurerm_key_vault.main.id
+  depends_on   = [azurerm_role_assignment.kv_admin]
+}
+
 # --- Budget: subscription-scoped guard rail ---
 # `az consumption budget create` is stuck on a pre-2019 API shape and 400s with
 # "use filter interface". Terraform hits the current ARM API directly, so this

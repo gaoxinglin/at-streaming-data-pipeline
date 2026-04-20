@@ -6,6 +6,14 @@ terraform {
       source  = "hashicorp/azurerm"
       version = "~> 4.0"
     }
+    azuread = {
+      source  = "hashicorp/azuread"
+      version = "~> 2.47"
+    }
+    databricks = {
+      source  = "databricks/databricks"
+      version = "~> 1.50"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.6"
@@ -24,4 +32,13 @@ provider "azurerm" {
       prevent_deletion_if_contains_resources = false
     }
   }
+}
+
+provider "azuread" {}
+
+# Databricks provider is configured after the workspace exists (two-pass apply).
+# Pass 1: azurerm creates the workspace → outputs workspace_url.
+# Pass 2: databricks provider uses that URL to configure clusters/jobs/secrets.
+provider "databricks" {
+  host = "https://${azurerm_databricks_workspace.main.workspace_url}"
 }

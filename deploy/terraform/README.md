@@ -11,6 +11,7 @@ as Avro for as long as you want, then add compute later in Phase 2.
 - Event Hubs namespace (Standard, 1 TU, Kafka-enabled) + topics: `vehicle_positions`, `trip_updates`, `service_alerts`, `at_alerts`
 - **Event Hubs Capture** writing every 5 min from each topic into `capture/` as Avro
 - Key Vault with the producer's connection string (and optionally your AT API key)
+- Monthly Cost Management budget ($50 NZD by default) with alerts at 80% forecast and 100% actual, sent to `owner`
 
 Steady-state cost is roughly **$1/day** — most of it the 1 throughput unit on EH.
 

@@ -145,3 +145,40 @@ resource "azurerm_key_vault_secret" "at_api_key" {
 
   depends_on = [azurerm_role_assignment.kv_admin]
 }
+
+# --- Budget: subscription-scoped guard rail ---
+# `az consumption budget create` is stuck on a pre-2019 API shape and 400s with
+# "use filter interface". Terraform hits the current ARM API directly, so this
+# is the path that actually works. Alerts go to var.owner — assumes it's an
+# email, which it is in practice.
+
+resource "azurerm_consumption_budget_subscription" "monthly" {
+  name            = "${var.project}-${var.environment}-monthly"
+  subscription_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}"
+
+  amount     = var.budget_amount
+  time_grain = "Monthly"
+
+  # Start at the first of the current month. End_date omitted → Azure defaults
+  # to 10 years out, which is fine; budget can be edited in place.
+  time_period {
+    start_date = "2026-04-01T00:00:00Z"
+  }
+
+  # Forecast trips early so you have time to react; actual at 100% is the cap.
+  notification {
+    enabled        = true
+    threshold      = 80
+    operator       = "GreaterThan"
+    threshold_type = "Forecasted"
+    contact_emails = [var.owner]
+  }
+
+  notification {
+    enabled        = true
+    threshold      = 100
+    operator       = "GreaterThan"
+    threshold_type = "Actual"
+    contact_emails = [var.owner]
+  }
+}

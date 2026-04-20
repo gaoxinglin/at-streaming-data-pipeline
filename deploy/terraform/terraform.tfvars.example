@@ -1,0 +1,10 @@
+owner = "you@example.com"
+
+# Optional: write your AT API key into Key Vault during apply.
+# Leave empty to add the secret manually later via `az keyvault secret set`.
+# at_api_key = ""
+
+# Override these only if defaults clash.
+location    = "newzealandnorth"
+project     = "atpipe"
+environment = "dev"

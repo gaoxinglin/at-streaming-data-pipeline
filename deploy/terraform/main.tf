@@ -77,7 +77,7 @@ resource "azurerm_eventhub" "topic" {
   name              = each.key
   namespace_id      = azurerm_eventhub_namespace.main.id
   partition_count   = 2
-  message_retention = 1 # days. Capture handles long-term durability.
+  message_retention = 7 # days. Gives Databricks a full week to catch up from earliest offsets.
 
   capture_description {
     enabled             = true

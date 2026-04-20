@@ -17,6 +17,7 @@ import os
 
 import requests
 from dotenv import load_dotenv
+from src.streaming import kafka_utils
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
@@ -157,16 +158,13 @@ if __name__ == "__main__":
     )
     spark.sparkContext.setLogLevel("WARN")
 
-    # fetch trip_update avro schema from SR
-    resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{SOURCE_TOPIC}-value/versions/latest", timeout=10)
-    resp.raise_for_status()
-    avro_schema = resp.json()["schema"]
+    avro_schema = kafka_utils.load_schema(SOURCE_TOPIC, SCHEMA_REGISTRY_URL)
 
     # read from kafka
     raw = (
         spark.readStream.format("kafka")
-        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-        .option("subscribe", SOURCE_TOPIC)
+        .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP))
+        .option("subscribe", kafka_utils.topic_name(SOURCE_TOPIC))
         .option("startingOffsets", STARTING_OFFSETS)
         .option("maxOffsetsPerTrigger", MAX_OFFSETS_PER_TRIGGER)
         .load()
@@ -174,7 +172,7 @@ if __name__ == "__main__":
 
     # deserialise avro, extract fields we need
     parsed = raw.select(
-        from_avro(expr("substring(value, 6)"), avro_schema).alias("data"),
+        from_avro(expr(kafka_utils.AVRO_VALUE_EXPR), avro_schema).alias("data"),
         col("timestamp").alias("kafka_timestamp"),
     )
 
@@ -214,8 +212,8 @@ if __name__ == "__main__":
             (
                 kafka_df.write
                 .format("kafka")
-                .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-                .option("topic", SINK_TOPIC)
+                .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP))
+                .option("topic", kafka_utils.topic_name(SINK_TOPIC))
                 .save()
             )
 
@@ -251,8 +249,8 @@ if __name__ == "__main__":
                 (
                     bunching_alerts.write
                     .format("kafka")
-                    .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-                    .option("topic", ALERTS_TOPIC)
+                    .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP))
+                    .option("topic", kafka_utils.topic_name(ALERTS_TOPIC))
                     .save()
                 )
         finally:

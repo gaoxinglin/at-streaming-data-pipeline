@@ -2,6 +2,7 @@ import os
 
 import requests
 from dotenv import load_dotenv
+from src.streaming import kafka_utils
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import base64, col, current_timestamp, expr, from_unixtime
@@ -131,12 +132,7 @@ if __name__ == "__main__":
     )
     spark.sparkContext.setLogLevel("WARN")
 
-    # fetch schemas from SR
-    schemas = {}
-    for topic in TOPICS:
-        resp = requests.get(f"{SCHEMA_REGISTRY_URL}/subjects/{topic}-value/versions/latest", timeout=10)
-        resp.raise_for_status()
-        schemas[topic] = resp.json()["schema"]
+    schemas = {t: kafka_utils.load_schema(t, SCHEMA_REGISTRY_URL) for t in TOPICS}
 
     # start one streaming query per topic
     queries = {}
@@ -146,17 +142,16 @@ if __name__ == "__main__":
 
         raw = (
             spark.readStream.format("kafka")
-            .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-            .option("subscribe", topic)
+            .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP))
+            .option("subscribe", kafka_utils.topic_name(topic))
             .option("startingOffsets", STARTING_OFFSETS)
             .option("maxOffsetsPerTrigger", MAX_OFFSETS_PER_TRIGGER)
             .load()
         )
 
-        # deserialise avro, keep raw payload as base64 for debugging
         # No watermark here — Bronze is append-only raw landing, never drops late data.
         parsed = raw.select(
-            from_avro(expr("substring(value, 6)"), schemas[topic]).alias("data"),
+            from_avro(expr(kafka_utils.AVRO_VALUE_EXPR), schemas[topic]).alias("data"),
             base64(col("value")).alias("_raw_payload"),
         )
 

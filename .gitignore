@@ -27,4 +27,6 @@ transform/.user.yml
 **/.terraform/
 *.tfstate
 *.tfstate.backup
-*.tfvars.worktrees/
+*.tfvars
+
+.worktrees/

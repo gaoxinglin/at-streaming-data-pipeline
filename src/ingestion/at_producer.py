@@ -1,8 +1,11 @@
+import io
+import json
 import os
 import signal
 import time
 from datetime import datetime
 
+import fastavro
 import requests
 from confluent_kafka import Producer
 from confluent_kafka.schema_registry import SchemaRegistryClient
@@ -16,6 +19,8 @@ AT_API_KEY = os.environ["AT_API_KEY"]
 AT_BASE_URL = os.getenv("AT_BASE_URL", "https://api.at.govt.nz/realtime/legacy")
 KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
+EVENTHUBS_CONNECTION_STRING = os.getenv("EVENTHUBS_CONNECTION_STRING", "")
+CLOUD_MODE = bool(EVENTHUBS_CONNECTION_STRING)
 POLL_PEAK = int(os.getenv("POLL_INTERVAL_PEAK", "30"))           # 06:00-09:00, 15:00-18:30
 POLL_SHOULDER = int(os.getenv("POLL_INTERVAL_SHOULDER", "60"))   # 09:00-15:00, 18:30-22:00
 POLL_OFFPEAK = int(os.getenv("POLL_INTERVAL_OFFPEAK", "300"))   # 22:00-06:00
@@ -145,18 +150,67 @@ def delivery_report(err, msg):
         print(f"Delivery failed for {msg.key()}: {err}")
 
 
-def main():
+def _build_producer_config():
+    cfg = {"bootstrap.servers": KAFKA_BOOTSTRAP}
+    if CLOUD_MODE:
+        # Event Hubs Kafka surface: SASL_SSL on 9093, username is the literal
+        # string "$ConnectionString", password is the whole connection string.
+        cfg.update({
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanism": "PLAIN",
+            "sasl.username": "$ConnectionString",
+            "sasl.password": EVENTHUBS_CONNECTION_STRING,
+        })
+    return cfg
+
+
+class _FastavroSerializer:
+    """Plain Avro (no Confluent magic-byte prefix) for Azure Event Hubs.
+
+    Azure Schema Registry isn't Confluent-wire-compatible, and we don't need
+    it — we own both producer and consumer, and the .avsc files travel with
+    the repo. Match AvroSerializer's call signature so the produce loop stays
+    polymorphic.
+    """
+
+    def __init__(self, schema_str):
+        self.schema = fastavro.parse_schema(json.loads(schema_str))
+
+    def __call__(self, record, ctx):
+        buf = io.BytesIO()
+        fastavro.schemaless_writer(buf, self.schema, record)
+        return buf.getvalue()
+
+
+def _build_value_serializers():
+    if CLOUD_MODE:
+        return {
+            topic: _FastavroSerializer(_load_schema(cfg["schema_file"]))
+            for topic, cfg in FEEDS.items()
+        }
     sr_client = SchemaRegistryClient({"url": SCHEMA_REGISTRY_URL})
+    return {
+        topic: AvroSerializer(sr_client, _load_schema(cfg["schema_file"]))
+        for topic, cfg in FEEDS.items()
+    }
+
+
+def _topic_for_broker(local_topic):
+    # Terraform creates EH entities as bare names (vehicle_positions, ...).
+    # Local Redpanda topics carry the "at." prefix. Strip it on the way out
+    # in cloud mode so the FEEDS dict can stay the local-canonical names.
+    return local_topic.removeprefix("at.") if CLOUD_MODE else local_topic
+
+
+def main():
     string_serializer = StringSerializer("utf_8")
-    producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP})
+    producer = Producer(_build_producer_config())
+    serializers = _build_value_serializers()
 
-    serializers = {}
-    for topic, cfg in FEEDS.items():
-        schema_str = _load_schema(cfg["schema_file"])
-        serializers[topic] = AvroSerializer(sr_client, schema_str)
-
-    print(f"Starting AT producer → {len(FEEDS)} feeds, "
-          f"peak={POLL_PEAK}s / shoulder={POLL_SHOULDER}s / offpeak={POLL_OFFPEAK}s / alerts={POLL_ALERTS}s")
+    target = "Azure Event Hubs (SASL_SSL, fastavro)" if CLOUD_MODE else "local Kafka (Confluent SR)"
+    print(f"Starting AT producer → {len(FEEDS)} feeds → {target}")
+    print(f"  polling: peak={POLL_PEAK}s / shoulder={POLL_SHOULDER}s / "
+          f"offpeak={POLL_OFFPEAK}s / alerts={POLL_ALERTS}s")
 
     _running = True
 
@@ -185,7 +239,7 @@ def main():
                 for entity in entities:
                     record = cfg["flatten"](entity)
                     producer.produce(
-                        topic=topic,
+                        topic=_topic_for_broker(topic),
                         key=string_serializer(record[cfg["key_field"]]),
                         value=serializers[topic](
                             record,

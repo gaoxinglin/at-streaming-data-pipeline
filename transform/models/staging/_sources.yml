@@ -24,8 +24,6 @@ sources:
         description: Spark Q2 output — stateful vehicle stall detections (3+ consecutive readings within 10m)
       - name: headway_metrics
         description: Spark Q3 output — sliding window headway regularity metrics per route+direction
-      - name: alert_correlations
-        description: Spark Q4 output — 3-stream join correlating service alerts with vehicle/trip impact
 
   - name: gtfs_static
     description: >

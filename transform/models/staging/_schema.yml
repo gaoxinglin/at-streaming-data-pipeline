@@ -79,24 +79,6 @@ models:
       - name: is_bunching
         tests: [not_null]
 
-  - name: stg_alert_correlations
-    description: Cleaned alert impact from Spark Q4 multi-stream join.
-    columns:
-      - name: correlation_id
-        tests: [not_null, unique]
-      - name: alert_id
-        tests: [not_null]
-      - name: vehicles_affected
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
-      - name: trips_affected
-        tests:
-          - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
-
   - name: stg_gtfs_routes
     description: Cleaned GTFS routes with route_type mapped to label (Bus/Rail).
     columns:

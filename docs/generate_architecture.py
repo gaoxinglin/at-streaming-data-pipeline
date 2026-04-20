@@ -132,7 +132,7 @@ for o in [3, 2, 1]:
           outline=(AMBER[0]//6, AMBER[1]//6, AMBER[2]//6), width=1)
 rrect(spark_x, spark_y, spark_w, spark_h, r=10, outline=AMBER, width=2)
 draw.text((spark_x+24, spark_y+16), "SPARK STRUCTURED STREAMING", fill=AMBER, font=f_section)
-draw.text((spark_x+380, spark_y+18), "5 independent streaming jobs", fill=DIM, font=f_small)
+draw.text((spark_x+380, spark_y+18), "4 independent streaming jobs", fill=DIM, font=f_small)
 hline(spark_x+10, spark_x+spark_w-10, spark_y+46, SLATE, 1)
 
 # Bronze ingestion bar
@@ -140,12 +140,11 @@ rrect(spark_x+24, spark_y+58, spark_w-48, 38, r=6, fill=(25, 35, 55), outline=SL
 ctxt("Bronze Ingestion    vehicle_positions | trip_updates | service_alerts",
      f_body, spark_x+spark_w//2, spark_y+68, WHITE)
 
-# Q1-Q4 jobs with source topic annotations
+# Q1-Q3 jobs with source topic annotations
 jobs = [
     ("Q1", "delay_alert_job", "stateless filter", "← trip_updates"),
     ("Q2", "vehicle_stall_job", "stateful per-vehicle", "← vehicle_positions"),
     ("Q3", "headway_regularity_job", "windowed aggregation", "← trip_updates"),
-    ("Q4", "alert_correlation_job", "3-stream join", "← all 3 topics"),
 ]
 for i, (q, name, pattern, source) in enumerate(jobs):
     jy = spark_y + 112 + i * 74
@@ -157,14 +156,14 @@ for i, (q, name, pattern, source) in enumerate(jobs):
     # Source topic annotation on right side of job box
     draw.text((spark_x+spark_w-280, jy+32), source, fill=TEAL, font=f_small)
 
-# === RED LINE: Spark Q1-Q4 → at.alerts (exits Spark LEFT, one turn up) ===
+# === RED LINE: Spark Q1-Q3 → at.alerts (exits Spark LEFT, one turn up) ===
 red_exit_y = spark_y + 340
 kafka_alerts_x = kafka_x + kafka_w - 40
 
 hline(kafka_alerts_x, spark_x, red_exit_y, CORAL)
 vline(kafka_alerts_x, kafka_y + kafka_h, red_exit_y, CORAL)
 arrow_u(kafka_alerts_x, kafka_y + kafka_h + 2, CORAL, 6)
-draw.text((kafka_alerts_x - 200, red_exit_y - 20), "Q1-Q4 alerts writeback", fill=CORAL, font=f_small)
+draw.text((kafka_alerts_x - 200, red_exit_y - 20), "Q1-Q3 alerts writeback", fill=CORAL, font=f_small)
 
 # === BLUE LINE: Spark → dbt (straight down) ===
 R2 = 700
@@ -228,7 +227,6 @@ cols = [
         "stg_trip_updates",
         "stg_stall_events",
         "stg_headway_metrics",
-        "stg_alert_correlations",
     ]),
     ("CORE", "tables", WHITE, [
         "dim_routes",
@@ -238,7 +236,6 @@ cols = [
         "fct_delay_alerts",
         "fct_stall_incidents",
         "fct_headway_regularity",
-        "fct_alert_impact",
     ]),
 ]
 
@@ -254,7 +251,7 @@ for ci, (layer, mat, color, models) in enumerate(cols):
         draw.text((cx, cy + 56 + mi * 22), m, fill=DIM, font=f_body)
 
     if layer == "MARTS":
-        q_labels = ["Q1", "Q2", "Q3", "Q4"]
+        q_labels = ["Q1", "Q2", "Q3"]
         for mi, ql in enumerate(q_labels):
             m_bbox = draw.textbbox((0, 0), models[mi], font=f_body)
             m_w = m_bbox[2] - m_bbox[0]
@@ -286,7 +283,6 @@ pages = [
     ("P1", "Live Operations"),
     ("P2", "Delay Analysis"),
     ("P3", "Stall & Bunching"),
-    ("P4", "Disruption Impact"),
 ]
 for i, (p, name) in enumerate(pages):
     py = pbi_y + 76 + i * 28

@@ -1,8 +1,8 @@
 """
-Real-time dashboard for AT Streaming Pipeline Q1-Q4.
+Real-time dashboard for AT Streaming Pipeline Q1-Q3.
 
 Reads directly from Kafka topics:
-  - at.alerts       → Q1 delay alerts, Q2 stall events, Q4 correlation alerts
+  - at.alerts       → Q1 delay alerts, Q2 stall events
   - at.headway_metrics → Q3 headway regularity / bus bunching
 
 Run with:
@@ -200,7 +200,7 @@ def _display_table(
 st.title("🚌 Auckland Transport — Live Pipeline Dashboard")
 st.caption(f"Kafka: `{KAFKA_BOOTSTRAP}` · refreshes every {REFRESH_INTERVAL}s")
 
-tab_alerts, tab_headway, tab_raw = st.tabs(["🚨 Alerts (Q1 / Q2 / Q4)", "📊 Headway Q3", "🔍 Raw feed"])
+tab_alerts, tab_headway, tab_raw = st.tabs(["🚨 Alerts (Q1 / Q2)", "📊 Headway Q3", "🔍 Raw feed"])
 
 # ── Fetch at.alerts ──────────────────────────────────────────────────────────
 alerts_consumer = _init_consumer("alerts", ["at.alerts"])
@@ -228,24 +228,21 @@ hw_buf = st.session_state["hw_buf"]
 # ── TAB 1: Alerts ─────────────────────────────────────────────────────────────
 with tab_alerts:
     # classify messages by which job produced them
-    delay_alerts, stall_events, corr_alerts, unknown = [], [], [], []
+    delay_alerts, stall_events, unknown = [], [], []
     for m in alerts_buf:
         if "severity" in m and "delay" in m:           # Q1
             delay_alerts.append(m)
         elif "stall_duration_s" in m or "reading_count" in m:  # Q2
             stall_events.append(m)
-        elif "vehicles_affected" in m or "alert_cause" in m:   # Q4
-            corr_alerts.append(m)
         else:
             unknown.append(m)
 
     delay_alerts = _dedupe_rows(delay_alerts, ["trip_id", "alert_id"])
     stall_events = _dedupe_rows(stall_events, ["stall_id"])
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     col1.metric("Delay Alerts (Q1)", len(delay_alerts), help="Last 5 min")
     col2.metric("Stall Events (Q2)", len(stall_events), help="Last 5 min")
-    col3.metric("Corr. Alerts (Q4)", len(corr_alerts), help="Last 5 min")
 
     st.divider()
 
@@ -315,28 +312,6 @@ with tab_alerts:
         )
     else:
         st.info("No stall events in the last 5 minutes.")
-
-    st.divider()
-
-    # Q4 — Correlation alerts
-    st.subheader("Q4 — Service Alert Correlations")
-    if corr_alerts:
-        df_c = pd.DataFrame(corr_alerts)
-        _display_table(
-            corr_alerts,
-            preferred_cols=[
-                "route_id",
-                "alert_cause",
-                "alert_effect",
-                "vehicles_affected",
-                "trips_affected",
-                "avg_delay_during",
-                "detected_at",
-            ],
-            sort_candidates=["detected_at", "_received_at"],
-        )
-    else:
-        st.info("No correlation alerts in the last 5 minutes.")
 
 
 # ── TAB 2: Headway (Q3) ──────────────────────────────────────────────────────

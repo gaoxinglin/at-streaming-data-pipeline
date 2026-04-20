@@ -47,7 +47,7 @@ variable "at_api_key" {
 variable "budget_amount" {
   description = "Monthly subscription budget cap in USD. Alerts fire before you blow through it."
   type        = number
-  default     = 50
+  default     = 300
 }
 
 variable "databricks_location" {

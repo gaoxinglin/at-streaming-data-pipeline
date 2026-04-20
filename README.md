@@ -22,7 +22,7 @@ A streaming-first data pipeline that ingests Auckland Transport GTFS-Realtime da
 | ------------------------------------------- | ------- |
 | Kafka producer (adaptive polling + Avro)    | Done    |
 | Spark Bronze ingestion                      | Done    |
-| Spark Q1-Q4 detection jobs                  | Done    |
+| Spark Q1-Q3 detection jobs                  | Done    |
 | dbt project + models (staging, core, marts) | Done    |
 | GTFS Static dimension tables (real AT data) | Planned |
 | Databricks Workflow (weekly dim refresh)    | Planned |
@@ -35,7 +35,7 @@ Its main objective is to demonstrate end-to-end streaming architecture and imple
 
 **In scope:**
 - Kafka ingestion + schema contracts
-- Spark Structured Streaming patterns (stateless, stateful, windowed, multi-stream joins)
+- Spark Structured Streaming patterns (stateless, stateful, windowed aggregations)
 - Medallion-style storage flow and dbt historical modeling
 - Local/cloud parity and reproducible developer workflow
 
@@ -49,14 +49,13 @@ Its main objective is to demonstrate end-to-end streaming architecture and imple
 
 ## What It Does
 
-The pipeline answers **4 real-time operational questions**, each exercising a progressively more advanced Spark Streaming pattern:
+The pipeline answers **3 real-time operational questions**, each exercising a progressively more advanced Spark Streaming pattern:
 
 | #   | Question                                                     | Spark Pattern                                              | Why Streaming?                                       |
 | --- | ------------------------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------- |
 | Q1  | Trip delay > 5 min? Emit passenger-facing alert              | Stateless filter + Kafka fan-out                           | A delay alert delivered 10 min late is useless       |
 | Q2  | Vehicle reporting same GPS (±10m) for 3+ readings?           | Stateful per-vehicle processing (`applyInPandasWithState`) | Stalled bus needs dispatch now, not tomorrow         |
 | Q3  | Are buses bunching on a route? (headway CV in 10-min window) | Sliding window aggregation                                 | Dispatchers can intervene to restore spacing         |
-| Q4  | Which vehicles/trips are affected by a service alert?        | Multi-stream join (3 topics)                               | Correlating disruption with impact must be real-time |
 
 Each question also has a **historical counterpart** — dbt rolls up the streaming output into Gold fact tables for trend analysis in Power BI.
 
@@ -66,7 +65,7 @@ Each question also has a **historical counterpart** — dbt rolls up the streami
 
 ### Live Dashboard Preview
 
-Below is the Streamlit live view used to monitor Q1-Q4 outputs in near real time during local runs.
+Below is the Streamlit live view used to monitor Q1-Q3 outputs in near real time during local runs.
 
 ![Streamlit Live Dashboard](docs/streamlit-live-dashboard.png)
 
@@ -83,11 +82,11 @@ Below is the Streamlit live view used to monitor Q1-Q4 outputs in near real time
 | Ingestion         | Python + `confluent-kafka`   | Same                   | Poll AT APIs, serialize to Avro, publish to Kafka |
 | Message Broker    | Redpanda (Docker)            | Azure Event Hubs       | Kafka-compatible streaming backbone               |
 | Schema Registry   | Redpanda bundled             | Confluent-compatible   | Avro schema evolution + validation                |
-| Stream Processing | PySpark Structured Streaming | Databricks Spark       | Bronze ingestion + Q1-Q4 detection jobs           |
+| Stream Processing | PySpark Structured Streaming | Databricks Spark       | Bronze ingestion + Q1-Q3 detection jobs           |
 | Storage           | Parquet                      | Delta Lake             | Medallion architecture (ACID in prod)             |
 | Batch Transform   | dbt + DuckDB                 | dbt + Databricks SQL   | Silver/Gold layer, historical analytics           |
 | Orchestration     | —                            | Databricks Workflows   | Weekly GTFS static refresh + dbt trigger          |
-| Dashboard         | —                            | Power BI (DirectQuery) | 4 pages mapped to Q1-Q4                           |
+| Dashboard         | —                            | Power BI (DirectQuery) | 3 pages mapped to Q1-Q3                           |
 
 ## Project Structure
 
@@ -101,7 +100,6 @@ Below is the Streamlit live view used to monitor Q1-Q4 outputs in near real time
 │       ├── delay_alert_job.py      # Q1: stateless filter
 │       ├── vehicle_stall_job.py    # Q2: stateful per-vehicle GPS tracking
 │       ├── headway_regularity_job.py  # Q3: sliding window aggregation
-│       ├── alert_correlation_job.py   # Q4: chained 3-stream join
 │       └── _shutdown.py            # Shared graceful shutdown
 ├── transform/                      # dbt project
 │   ├── models/
@@ -162,7 +160,6 @@ make run-bronze   # Bronze ingestion (raw events → Parquet)
 make run-q1       # Q1: delay alerts (stateless filter)
 make run-q2       # Q2: vehicle stalls (stateful per-vehicle)
 make run-q3       # Q3: headway regularity (windowed aggregation)
-make run-q4       # Q4: alert correlation (3-stream join)
 ```
 
 ### Run dbt (Historical Analytics)
@@ -191,12 +188,9 @@ Tracks per-vehicle GPS state across micro-batches using `applyInPandasWithState`
 ### Q3: Headway Regularity (Bus Bunching)
 Computes coefficient of variation (CV) of departure headways per route in a 10-minute sliding window (2-min slide). CV > 0.5 with 3+ trips flags bunching. Deduplicates trip updates within the watermark window to prevent double-counting.
 
-### Q4: Service Alert Correlation
-Chained 3-stream join: `(service_alerts JOIN vehicle_positions) on route_id`, then `JOIN trip_updates on trip_id`. Uses differentiated watermarks (alerts=10min, positions=2min) to handle data skew. Network-wide alerts (null route_id) pass through directly without correlation.
-
 ## Data Model
 
-**Bronze**: Raw event tables (VP, TU, SA) + detection output tables (Q1-Q4). Written by Spark Structured Streaming.
+**Bronze**: Raw event tables (VP, TU, SA) + detection output tables (Q1-Q3). Written by Spark Structured Streaming.
 
 **Staging**: Cleaned views over Bronze raw tables and Bronze detection tables. Also includes `stg_gtfs_routes` / `stg_gtfs_stops` sourced from GTFS Static seed data (not Bronze).
 
@@ -206,7 +200,6 @@ Chained 3-stream join: `(service_alerts JOIN vehicle_positions) on route_id`, th
 - `fct_delay_alerts` — Q1: delay events by route over time
 - `fct_stall_incidents` — Q2: stall locations and durations
 - `fct_headway_regularity` — Q3: hourly headway CV by route
-- `fct_alert_impact` — Q4: vehicles/trips affected per service alert
 
 ## License
 

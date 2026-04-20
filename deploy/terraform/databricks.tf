@@ -46,11 +46,10 @@ locals {
   ]
 
   # Shared single-node cluster config for all streaming jobs.
-  # when the job finishes (or run indefinitely for continuous jobs).
   streaming_cluster_base = {
     spark_version = data.databricks_spark_version.lts.id
-    node_type_id  = data.databricks_node_type.d2s.id  # default small; override to d4s where needed
-    num_workers   = 0  # single-node: driver runs executors too
+    node_type_id  = data.databricks_node_type.d2s.id
+    num_workers   = 0
 
     spark_conf = merge(local.adls_spark_conf, {
       "spark.master"                     = "local[*]"
@@ -70,7 +69,7 @@ data "databricks_node_type" "d2s" {
 }
 
 data "databricks_node_type" "d4s" {
-  min_memory_gb = 14  # Standard_D4s_v3 (4 core / 16 GB) — bronze, Q2, Q4
+  min_memory_gb = 14  # Standard_D4s_v3 (4 core / 16 GB) — bronze, Q2
 }
 
 # --- Secret Scope (backed by Key Vault) ---
@@ -99,8 +98,6 @@ resource "databricks_git_credential" "github" {
 }
 
 # --- Repo checkout ---
-# Databricks checks out the repo into /Repos/<owner>/<repo>.
-# spark_python_task paths are relative to this checkout root.
 
 resource "databricks_repo" "pipeline" {
   url    = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
@@ -131,8 +128,15 @@ resource "databricks_job" "producer" {
 
     new_cluster {
       spark_version = data.databricks_spark_version.lts.id
-      node_type_id  = data.databricks_node_type.d2s.id  # pure Python, no Spark needed
+      node_type_id  = data.databricks_node_type.d2s.id
       num_workers   = 0
+
+      # Spot with on-demand fallback — checkpoint + continuous restart means
+      # an eviction causes at most one polling cycle of data loss (~30s).
+      azure_attributes {
+        availability       = "SPOT_WITH_FALLBACK_AZURE"
+        spot_bid_max_price = -1
+      }
 
       spark_conf = {
         "spark.master"                     = "local[*]"
@@ -172,10 +176,15 @@ resource "databricks_job" "bronze_ingestion" {
 
     new_cluster {
       spark_version  = local.streaming_cluster_base.spark_version
-      node_type_id   = data.databricks_node_type.d4s.id  # 3 parallel streams need more memory
+      node_type_id   = data.databricks_node_type.d4s.id
       num_workers    = local.streaming_cluster_base.num_workers
       spark_conf     = local.streaming_cluster_base.spark_conf
       spark_env_vars = local.streaming_env
+
+      azure_attributes {
+        availability       = "SPOT_WITH_FALLBACK_AZURE"
+        spot_bid_max_price = -1
+      }
 
       dynamic "library" {
         for_each = local.kafka_libs
@@ -215,6 +224,11 @@ resource "databricks_job" "delay_alert" {
       spark_conf              = local.streaming_cluster_base.spark_conf
       spark_env_vars          = local.streaming_env
 
+      azure_attributes {
+        availability       = "SPOT_WITH_FALLBACK_AZURE"
+        spot_bid_max_price = -1
+      }
+
       dynamic "library" {
         for_each = local.kafka_libs
         content {
@@ -248,10 +262,15 @@ resource "databricks_job" "vehicle_stall" {
 
     new_cluster {
       spark_version  = local.streaming_cluster_base.spark_version
-      node_type_id   = data.databricks_node_type.d4s.id  # applyInPandasWithState needs state memory
+      node_type_id   = data.databricks_node_type.d4s.id
       num_workers    = local.streaming_cluster_base.num_workers
       spark_conf     = local.streaming_cluster_base.spark_conf
       spark_env_vars = local.streaming_env
+
+      azure_attributes {
+        availability       = "SPOT_WITH_FALLBACK_AZURE"
+        spot_bid_max_price = -1
+      }
 
       dynamic "library" {
         for_each = local.kafka_libs
@@ -291,6 +310,11 @@ resource "databricks_job" "headway_regularity" {
       spark_conf              = local.streaming_cluster_base.spark_conf
       spark_env_vars          = local.streaming_env
 
+      azure_attributes {
+        availability       = "SPOT_WITH_FALLBACK_AZURE"
+        spot_bid_max_price = -1
+      }
+
       dynamic "library" {
         for_each = local.kafka_libs
         content {
@@ -308,50 +332,7 @@ resource "databricks_job" "headway_regularity" {
   depends_on  = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
 }
 
-# --- Job: Q4 Alert Correlation ---
-
-resource "databricks_job" "alert_correlation" {
-  name = "q4-alert-correlation"
-
-  git_source {
-    url      = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
-    branch   = "main"
-    provider = "gitHub"
-  }
-
-  task {
-    task_key = "detect"
-
-    new_cluster {
-      spark_version = local.streaming_cluster_base.spark_version
-      node_type_id  = data.databricks_node_type.d4s.id  # 3-stream join + window state
-      num_workers   = local.streaming_cluster_base.num_workers
-
-      spark_conf = merge(local.streaming_cluster_base.spark_conf, {
-        "spark.driver.memory" = "2g"
-      })
-
-      spark_env_vars = local.streaming_env
-
-      dynamic "library" {
-        for_each = local.kafka_libs
-        content {
-          maven { coordinates = library.value.maven.coordinates }
-        }
-      }
-    }
-
-    spark_python_task {
-      python_file = "src/streaming/alert_correlation_job.py"
-    }
-  }
-
-  continuous { pause_status = "UNPAUSED" }
-  depends_on  = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
-}
-
 # --- Job: dbt (hourly scheduled) ---
-# Runs dbt against Databricks SQL Warehouse via a thin Python wrapper notebook.
 # PAUSED by default — unpause after verifying Bronze Delta tables exist.
 
 resource "databricks_job" "dbt" {
@@ -368,8 +349,13 @@ resource "databricks_job" "dbt" {
 
     new_cluster {
       spark_version = data.databricks_spark_version.lts.id
-      node_type_id  = data.databricks_node_type.d2s.id  # dbt just sends SQL, no Spark compute
+      node_type_id  = data.databricks_node_type.d2s.id
       num_workers   = 0
+
+      azure_attributes {
+        availability       = "SPOT_WITH_FALLBACK_AZURE"
+        spot_bid_max_price = -1
+      }
 
       spark_conf = {
         "spark.master"                     = "local[*]"
@@ -389,10 +375,125 @@ resource "databricks_job" "dbt" {
   }
 
   schedule {
-    quartz_cron_expression = "0 0 * ? * *"  # top of every hour, Auckland time
+    quartz_cron_expression = "0 0 * ? * *"
     timezone_id            = "Pacific/Auckland"
     pause_status           = "PAUSED"
   }
 
   depends_on = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
+}
+
+# --- Night-mode scheduler: pause / resume Q1-Q3 detection jobs ---
+#
+# AT off-peak is 22:00-06:00 NZST (5-min polling, minimal event volume).
+# Detection jobs (Q1-Q3) pause at 22:00 and resume at 06:00, saving ~8hr of
+# cluster cost per day. Producer + bronze ingest stay up to keep the capture
+# buffer warm and avoid checkpoint gaps.
+#
+# The notebook calls the Databricks Jobs API using the cluster's ambient token
+# (dbutils.notebook.getContext().apiToken()) — no stored PAT needed.
+
+resource "databricks_notebook" "toggle_detection" {
+  path     = "/Shared/at-pipeline/toggle_detection_jobs"
+  language = "PYTHON"
+
+  content_base64 = base64encode(<<-EOF
+    import requests
+
+    dbutils.widgets.addText("action", "PAUSED")
+    action = dbutils.widgets.get("action")
+
+    ctx   = dbutils.notebook.getContext()
+    token = ctx.apiToken().get()
+    host  = ctx.apiUrl().get()
+
+    target = {"q1-delay-alert", "q2-vehicle-stall", "q3-headway-regularity"}
+    hdrs   = {"Authorization": f"Bearer {token}"}
+
+    jobs = requests.get(f"{host}/api/2.1/jobs/list?limit=100", headers=hdrs).json().get("jobs", [])
+    for job in jobs:
+        if job["settings"]["name"] in target:
+            requests.post(f"{host}/api/2.1/jobs/update", headers=hdrs, json={
+                "job_id": job["job_id"],
+                "new_settings": {"continuous": {"pause_status": action}},
+            })
+            print(f"[{action}] {job['settings']['name']} (id={job['job_id']})")
+    EOF
+  )
+}
+
+resource "databricks_job" "pause_detection" {
+  name = "night-pause-detection"
+
+  task {
+    task_key = "pause"
+
+    notebook_task {
+      notebook_path   = databricks_notebook.toggle_detection.path
+      base_parameters = { action = "PAUSED" }
+    }
+
+    new_cluster {
+      spark_version = data.databricks_spark_version.lts.id
+      node_type_id  = data.databricks_node_type.d2s.id
+      num_workers   = 0
+
+      azure_attributes {
+        availability       = "SPOT_WITH_FALLBACK_AZURE"
+        spot_bid_max_price = -1
+      }
+
+      spark_conf = {
+        "spark.master"                     = "local[*]"
+        "spark.databricks.cluster.profile" = "singleNode"
+      }
+    }
+  }
+
+  # 22:00 NZST daily — AT off-peak begins
+  schedule {
+    quartz_cron_expression = "0 0 22 * * ?"
+    timezone_id            = "Pacific/Auckland"
+    pause_status           = "UNPAUSED"
+  }
+
+  depends_on = [databricks_notebook.toggle_detection]
+}
+
+resource "databricks_job" "resume_detection" {
+  name = "morning-resume-detection"
+
+  task {
+    task_key = "resume"
+
+    notebook_task {
+      notebook_path   = databricks_notebook.toggle_detection.path
+      base_parameters = { action = "UNPAUSED" }
+    }
+
+    new_cluster {
+      spark_version = data.databricks_spark_version.lts.id
+      node_type_id  = data.databricks_node_type.d2s.id
+      num_workers   = 0
+
+      azure_attributes {
+        availability       = "SPOT_WITH_FALLBACK_AZURE"
+        spot_bid_max_price = -1
+      }
+
+      spark_conf = {
+        "spark.master"                     = "local[*]"
+        "spark.databricks.cluster.profile" = "singleNode"
+      }
+    }
+  }
+
+  # 06:00 NZST daily — AT peak begins
+  schedule {
+    quartz_cron_expression = "0 0 6 * * ?"
+    timezone_id            = "Pacific/Auckland"
+    pause_status           = "UNPAUSED"
+  }
+
+  depends_on = [databricks_notebook.toggle_detection]
 }

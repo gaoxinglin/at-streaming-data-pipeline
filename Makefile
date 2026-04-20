@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: kafka-up kafka-down run-producer run-streaming run-bronze run-q1 run-q2 run-q3 run-q4 query-bronze sync-duckdb dbt-deps dbt-seed dbt-run dbt-test dbt-compile dbt-staging dbt-docs test lint
+.PHONY: kafka-up kafka-down run-producer run-streaming run-bronze run-q1 run-q2 run-q3 query-bronze sync-duckdb dbt-deps dbt-seed dbt-run dbt-test dbt-compile dbt-staging dbt-docs test lint
 
 # --- Infrastructure ---
 
@@ -20,10 +20,8 @@ run-producer:
 # Local demo defaults. Keep them small enough for WSL + Docker, but leave an
 # escape hatch in .env or the shell when you need more headroom.
 SPARK_DRIVER_MEMORY ?= 1280m
-Q4_SPARK_DRIVER_MEMORY ?= 1536m
 SPARK_SQL_SHUFFLE_PARTITIONS ?= 4
 SPARK_ENV = PYSPARK_PYTHON=$$(pwd)/.venv/bin/python SPARK_DRIVER_MEMORY=$(SPARK_DRIVER_MEMORY) SPARK_SQL_SHUFFLE_PARTITIONS=$(SPARK_SQL_SHUFFLE_PARTITIONS)
-Q4_SPARK_ENV = PYSPARK_PYTHON=$$(pwd)/.venv/bin/python SPARK_DRIVER_MEMORY=$(Q4_SPARK_DRIVER_MEMORY) SPARK_SQL_SHUFFLE_PARTITIONS=$(SPARK_SQL_SHUFFLE_PARTITIONS)
 
 run-bronze:
 	$(SPARK_ENV) .venv/bin/python -m src.streaming.bronze_ingestion
@@ -37,10 +35,7 @@ run-q2:
 run-q3:
 	$(SPARK_ENV) .venv/bin/python -m src.streaming.headway_regularity_job
 
-run-q4:
-	$(Q4_SPARK_ENV) .venv/bin/python -m src.streaming.alert_correlation_job
-
-run-streaming: run-bronze run-q1 run-q2 run-q3 run-q4
+run-streaming: run-bronze run-q1 run-q2 run-q3
 
 # --- DuckDB ---
 

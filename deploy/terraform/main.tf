@@ -73,12 +73,11 @@ resource "azurerm_role_assignment" "eh_to_storage" {
 }
 
 resource "azurerm_eventhub" "topic" {
-  for_each            = toset(var.eventhubs)
-  name                = each.key
-  namespace_name      = azurerm_eventhub_namespace.main.name
-  resource_group_name = azurerm_resource_group.main.name
-  partition_count     = 2
-  message_retention   = 1 # days. Capture handles long-term durability.
+  for_each          = toset(var.eventhubs)
+  name              = each.key
+  namespace_id      = azurerm_eventhub_namespace.main.id
+  partition_count   = 2
+  message_retention = 1 # days. Capture handles long-term durability.
 
   capture_description {
     enabled             = true
@@ -119,7 +118,7 @@ resource "azurerm_key_vault" "main" {
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   soft_delete_retention_days = 7
   purge_protection_enabled   = false # dev only.
-  enable_rbac_authorization  = true
+  rbac_authorization_enabled = true
 
   tags = local.tags
 }

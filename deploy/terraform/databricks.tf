@@ -46,11 +46,11 @@ locals {
   ]
 
   # Shared single-node cluster config for all streaming jobs.
+  # when the job finishes (or run indefinitely for continuous jobs).
   streaming_cluster_base = {
-    spark_version           = data.databricks_spark_version.lts.id
-    node_type_id            = data.databricks_node_type.d4s.id
-    num_workers             = 0   # single-node: driver runs executors too
-    autotermination_minutes = 0   # never auto-terminate; streaming is long-lived
+    spark_version = data.databricks_spark_version.lts.id
+    node_type_id  = data.databricks_node_type.d2s.id  # default small; override to d4s where needed
+    num_workers   = 0  # single-node: driver runs executors too
 
     spark_conf = merge(local.adls_spark_conf, {
       "spark.master"                     = "local[*]"
@@ -65,8 +65,12 @@ data "databricks_spark_version" "lts" {
   long_term_support = true
 }
 
+data "databricks_node_type" "d2s" {
+  min_memory_gb = 7   # Standard_D2s_v3 (2 core / 8 GB) — producer, Q1, Q3, dbt
+}
+
 data "databricks_node_type" "d4s" {
-  min_memory_gb = 14  # resolves to Standard_D4s_v3 (16 GB) on Azure
+  min_memory_gb = 14  # Standard_D4s_v3 (4 core / 16 GB) — bronze, Q2, Q4
 }
 
 # --- Secret Scope (backed by Key Vault) ---
@@ -126,15 +130,14 @@ resource "databricks_job" "producer" {
     task_key = "produce"
 
     new_cluster {
-      spark_version           = data.databricks_spark_version.lts.id
-      node_type_id            = data.databricks_node_type.d4s.id
-      num_workers             = 0
-      autotermination_minutes = 0
+      spark_version = data.databricks_spark_version.lts.id
+      node_type_id  = data.databricks_node_type.d2s.id  # pure Python, no Spark needed
+      num_workers   = 0
 
-      spark_conf = merge(local.adls_spark_conf, {
+      spark_conf = {
         "spark.master"                     = "local[*]"
         "spark.databricks.cluster.profile" = "singleNode"
-      })
+      }
 
       spark_env_vars = {
         AT_API_KEY                  = "{{secrets/at-pipeline/at-api-key}}"
@@ -168,12 +171,11 @@ resource "databricks_job" "bronze_ingestion" {
     task_key = "ingest"
 
     new_cluster {
-      spark_version           = local.streaming_cluster_base.spark_version
-      node_type_id            = local.streaming_cluster_base.node_type_id
-      num_workers             = local.streaming_cluster_base.num_workers
-      autotermination_minutes = local.streaming_cluster_base.autotermination_minutes
-      spark_conf              = local.streaming_cluster_base.spark_conf
-      spark_env_vars          = local.streaming_env
+      spark_version  = local.streaming_cluster_base.spark_version
+      node_type_id   = data.databricks_node_type.d4s.id  # 3 parallel streams need more memory
+      num_workers    = local.streaming_cluster_base.num_workers
+      spark_conf     = local.streaming_cluster_base.spark_conf
+      spark_env_vars = local.streaming_env
 
       dynamic "library" {
         for_each = local.kafka_libs
@@ -210,7 +212,6 @@ resource "databricks_job" "delay_alert" {
       spark_version           = local.streaming_cluster_base.spark_version
       node_type_id            = local.streaming_cluster_base.node_type_id
       num_workers             = local.streaming_cluster_base.num_workers
-      autotermination_minutes = local.streaming_cluster_base.autotermination_minutes
       spark_conf              = local.streaming_cluster_base.spark_conf
       spark_env_vars          = local.streaming_env
 
@@ -246,12 +247,11 @@ resource "databricks_job" "vehicle_stall" {
     task_key = "detect"
 
     new_cluster {
-      spark_version           = local.streaming_cluster_base.spark_version
-      node_type_id            = local.streaming_cluster_base.node_type_id
-      num_workers             = local.streaming_cluster_base.num_workers
-      autotermination_minutes = local.streaming_cluster_base.autotermination_minutes
-      spark_conf              = local.streaming_cluster_base.spark_conf
-      spark_env_vars          = local.streaming_env
+      spark_version  = local.streaming_cluster_base.spark_version
+      node_type_id   = data.databricks_node_type.d4s.id  # applyInPandasWithState needs state memory
+      num_workers    = local.streaming_cluster_base.num_workers
+      spark_conf     = local.streaming_cluster_base.spark_conf
+      spark_env_vars = local.streaming_env
 
       dynamic "library" {
         for_each = local.kafka_libs
@@ -288,7 +288,6 @@ resource "databricks_job" "headway_regularity" {
       spark_version           = local.streaming_cluster_base.spark_version
       node_type_id            = local.streaming_cluster_base.node_type_id
       num_workers             = local.streaming_cluster_base.num_workers
-      autotermination_minutes = local.streaming_cluster_base.autotermination_minutes
       spark_conf              = local.streaming_cluster_base.spark_conf
       spark_env_vars          = local.streaming_env
 
@@ -324,13 +323,11 @@ resource "databricks_job" "alert_correlation" {
     task_key = "detect"
 
     new_cluster {
-      spark_version           = local.streaming_cluster_base.spark_version
-      node_type_id            = local.streaming_cluster_base.node_type_id
-      num_workers             = local.streaming_cluster_base.num_workers
-      autotermination_minutes = local.streaming_cluster_base.autotermination_minutes
+      spark_version = local.streaming_cluster_base.spark_version
+      node_type_id  = data.databricks_node_type.d4s.id  # 3-stream join + window state
+      num_workers   = local.streaming_cluster_base.num_workers
 
       spark_conf = merge(local.streaming_cluster_base.spark_conf, {
-        # Q4 joins 3 streams — extra driver memory prevents OOM on window state
         "spark.driver.memory" = "2g"
       })
 
@@ -370,15 +367,14 @@ resource "databricks_job" "dbt" {
     task_key = "transform"
 
     new_cluster {
-      spark_version           = data.databricks_spark_version.lts.id
-      node_type_id            = data.databricks_node_type.d4s.id
-      num_workers             = 0
-      autotermination_minutes = 30  # dbt runs finish in minutes, terminate after
+      spark_version = data.databricks_spark_version.lts.id
+      node_type_id  = data.databricks_node_type.d2s.id  # dbt just sends SQL, no Spark compute
+      num_workers   = 0
 
-      spark_conf = merge(local.adls_spark_conf, {
+      spark_conf = {
         "spark.master"                     = "local[*]"
         "spark.databricks.cluster.profile" = "singleNode"
-      })
+      }
 
       spark_env_vars = {
         DATABRICKS_HOST      = "https://${azurerm_databricks_workspace.main.workspace_url}"

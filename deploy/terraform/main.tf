@@ -151,8 +151,8 @@ resource "azurerm_key_vault_secret" "at_api_key" {
 resource "azurerm_databricks_workspace" "main" {
   name                        = "dbw-${var.project}-${var.environment}-${local.suffix}"
   resource_group_name         = azurerm_resource_group.main.name
-  location                    = azurerm_resource_group.main.location
-  sku                         = "standard"
+  location                    = var.databricks_location  # Databricks not available in newzealandnorth
+  sku                         = "premium"
   managed_resource_group_name = "rg-${var.project}-${var.environment}-managed"
 
   tags = local.tags

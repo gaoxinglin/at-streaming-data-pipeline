@@ -50,6 +50,12 @@ variable "budget_amount" {
   default     = 50
 }
 
+variable "databricks_location" {
+  description = "Azure region for Databricks workspace. Databricks is not available in newzealandnorth — closest option is australiaeast."
+  type        = string
+  default     = "australiaeast"
+}
+
 variable "github_username" {
   description = "GitHub username for Databricks Repo checkout and git credential."
   type        = string

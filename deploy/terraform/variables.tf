@@ -33,7 +33,8 @@ variable "eventhubs" {
     "vehicle_positions",
     "trip_updates",
     "service_alerts",
-    "at_alerts",
+    "alerts",
+    "headway_metrics",
   ]
 }
 

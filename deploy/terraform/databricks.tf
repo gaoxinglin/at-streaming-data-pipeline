@@ -89,6 +89,12 @@ resource "databricks_secret_scope" "at_pipeline" {
   depends_on = [azurerm_databricks_workspace.main]
 }
 
+resource "databricks_secret_acl" "at_pipeline_users_read" {
+  scope      = databricks_secret_scope.at_pipeline.name
+  principal  = "users"
+  permission = "READ"
+}
+
 # --- Git credential (needed if repo is private) ---
 # Remove this block if the GitHub repo is public.
 

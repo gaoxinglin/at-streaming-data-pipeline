@@ -14,9 +14,14 @@ import sys
 # When run as a Databricks workspace script, sys.path contains the script's
 # directory (src/streaming/), not the repo root. Add repo root so that
 # `from src.streaming.*` imports resolve correctly.
-_repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if _repo_root not in sys.path:
-    sys.path.insert(0, _repo_root)
+try:
+    _repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if _repo_root not in sys.path:
+        sys.path.insert(0, _repo_root)
+except NameError:
+    # Databricks ipykernel runs scripts via exec(compile(...)) which doesn't set __file__.
+    # The repo root is already the working directory and on sys.path.
+    pass
 
 try:
     from dotenv import load_dotenv

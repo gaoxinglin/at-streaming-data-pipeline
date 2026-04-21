@@ -62,6 +62,7 @@ locals {
 
 data "databricks_spark_version" "lts" {
   long_term_support = true
+  scala             = "2.12"
 }
 
 data "databricks_node_type" "d2s" {
@@ -92,6 +93,7 @@ resource "databricks_secret_scope" "at_pipeline" {
 # Remove this block if the GitHub repo is public.
 
 resource "databricks_git_credential" "github" {
+  count                 = var.github_pat != "" ? 1 : 0
   git_provider          = "gitHub"
   git_username          = var.github_username
   personal_access_token = var.github_pat
@@ -119,12 +121,6 @@ locals {
 resource "databricks_job" "streaming" {
   name = "at-streaming-pipeline"
 
-  git_source {
-    url      = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
-    branch   = "main"
-    provider = "gitHub"
-  }
-
   task {
     task_key = "stream"
 
@@ -139,17 +135,18 @@ resource "databricks_job" "streaming" {
         availability       = "SPOT_WITH_FALLBACK_AZURE"
         spot_bid_max_price = -1
       }
+    }
 
-      dynamic "library" {
-        for_each = local.kafka_libs
-        content {
-          maven { coordinates = library.value.maven.coordinates }
-        }
+    # provider 1.50+: libraries must be at task level, not inside new_cluster
+    dynamic "library" {
+      for_each = local.kafka_libs
+      content {
+        maven { coordinates = library.value.maven.coordinates }
       }
     }
 
     spark_python_task {
-      python_file = "src/streaming/main.py"
+      python_file = "${local.repo_path}/src/streaming/main.py"
     }
   }
 
@@ -162,12 +159,6 @@ resource "databricks_job" "streaming" {
 
 resource "databricks_job" "dbt" {
   name = "dbt-transform"
-
-  git_source {
-    url      = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
-    branch   = "main"
-    provider = "gitHub"
-  }
 
   task {
     task_key = "transform"
@@ -195,7 +186,7 @@ resource "databricks_job" "dbt" {
     }
 
     spark_python_task {
-      python_file = "deploy/databricks/run_dbt.py"
+      python_file = "${local.repo_path}/deploy/databricks/run_dbt.py"
     }
   }
 

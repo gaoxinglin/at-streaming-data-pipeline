@@ -38,16 +38,6 @@ def start(spark: SparkSession) -> list:
     SOURCE_TOPIC = "at.vehicle_positions"
     SINK_TOPIC = "at.alerts"
 
-    spark = (
-        SparkSession.builder
-        .appName("vehicle_stall_detection")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
-                "org.apache.spark:spark-avro_2.12:3.4.1")
-        .getOrCreate()
-    )
-    spark.sparkContext.setLogLevel("WARN")
-
     avro_schema = kafka_utils.load_schema(SOURCE_TOPIC, SCHEMA_REGISTRY_URL)
 
     raw = (

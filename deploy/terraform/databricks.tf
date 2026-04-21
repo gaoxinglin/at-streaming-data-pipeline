@@ -18,20 +18,21 @@ locals {
     checkpoints = "abfss://checkpoints@${local.storage_account}.dfs.core.windows.net"
   }
 
-  # Spark OAuth config for ADLS Gen2 — applied at cluster level so job code
-  # stays auth-agnostic. Credentials injected at runtime via secret scope.
+  # Spark OAuth config for ADLS Gen2 — values sourced directly from Terraform
+  # resources (already in state) to avoid {{secrets/...}} resolution at cluster
+  # startup, which requires Databricks control-plane KV access that is unreliable.
   adls_spark_conf = {
     "spark.hadoop.fs.azure.account.auth.type.${local.storage_account}.dfs.core.windows.net"              = "OAuth"
     "spark.hadoop.fs.azure.account.oauth.provider.type.${local.storage_account}.dfs.core.windows.net"    = "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider"
-    "spark.hadoop.fs.azure.account.oauth2.client.id.${local.storage_account}.dfs.core.windows.net"       = "{{secrets/at-pipeline/databricks-sp-client-id}}"
-    "spark.hadoop.fs.azure.account.oauth2.client.secret.${local.storage_account}.dfs.core.windows.net"   = "{{secrets/at-pipeline/databricks-sp-client-secret}}"
-    "spark.hadoop.fs.azure.account.oauth2.client.endpoint.${local.storage_account}.dfs.core.windows.net" = "https://login.microsoftonline.com/{{secrets/at-pipeline/databricks-sp-tenant-id}}/oauth2/token"
+    "spark.hadoop.fs.azure.account.oauth2.client.id.${local.storage_account}.dfs.core.windows.net"       = azuread_application.databricks.client_id
+    "spark.hadoop.fs.azure.account.oauth2.client.secret.${local.storage_account}.dfs.core.windows.net"   = azuread_service_principal_password.databricks.value
+    "spark.hadoop.fs.azure.account.oauth2.client.endpoint.${local.storage_account}.dfs.core.windows.net" = "https://login.microsoftonline.com/${data.azurerm_client_config.current.tenant_id}/oauth2/token"
   }
 
   # Env vars injected into every streaming job via cluster config.
   streaming_env = {
     KAFKA_BOOTSTRAP_SERVERS     = "${azurerm_eventhub_namespace.main.name}.servicebus.windows.net:9093"
-    EVENTHUBS_CONNECTION_STRING = "{{secrets/at-pipeline/eventhubs-connection-string}}"
+    EVENTHUBS_CONNECTION_STRING = azurerm_eventhub_namespace_authorization_rule.producer.primary_connection_string
     OUTPUT_FORMAT               = "delta"
     OUTPUT_PATH                 = local.abfss.bronze
     CHECKPOINT_PATH             = local.abfss.checkpoints

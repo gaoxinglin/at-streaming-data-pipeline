@@ -1,8 +1,7 @@
 """Q1 delay alert detection — pure functions, no Spark session dependency."""
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, current_timestamp, lit, when
-from pyspark.sql.functions import uuid as spark_uuid
+from pyspark.sql.functions import col, current_timestamp, expr, lit, when
 
 DELAY_THRESHOLD = 300  # 5 minutes in seconds
 
@@ -12,7 +11,7 @@ def detect_delays(df: DataFrame) -> DataFrame:
     return (
         df.filter(col("delay") > DELAY_THRESHOLD)
         .select(
-            spark_uuid().alias("event_id"),
+            expr("uuid()").alias("event_id"),
             "trip_id",
             "route_id",
             "delay",

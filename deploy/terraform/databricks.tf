@@ -145,6 +145,10 @@ resource "databricks_job" "streaming" {
       }
     }
 
+    library {
+      pypi { package = "python-dotenv>=1.0" }
+    }
+
     spark_python_task {
       python_file = "${local.repo_path}/src/streaming/main.py"
     }

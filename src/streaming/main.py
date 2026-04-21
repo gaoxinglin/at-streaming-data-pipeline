@@ -9,8 +9,20 @@ Runs all four Structured Streaming queries on one shared cluster:
 """
 
 import os
+import sys
 
-from dotenv import load_dotenv
+# When run as a Databricks workspace script, sys.path contains the script's
+# directory (src/streaming/), not the repo root. Add repo root so that
+# `from src.streaming.*` imports resolve correctly.
+_repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = lambda: None  # noqa: E731 — dotenv not installed on Databricks cluster
+
 from pyspark.sql import SparkSession
 
 from src.streaming.bronze_ingestion import start as start_bronze

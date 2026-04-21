@@ -34,6 +34,7 @@ from src.streaming.bronze_ingestion import start as start_bronze
 from src.streaming.delay_alert_job import start as start_delay_alert
 from src.streaming.vehicle_stall_job import start as start_vehicle_stall
 from src.streaming.headway_regularity_job import start as start_headway_regularity
+from src.streaming.alerts_consumer_job import start as start_alerts_consumer
 from src.streaming._shutdown import run_until_shutdown
 
 if __name__ == "__main__":
@@ -52,6 +53,7 @@ if __name__ == "__main__":
         *start_delay_alert(spark),
         *start_vehicle_stall(spark),
         *start_headway_regularity(spark),
+        *start_alerts_consumer(spark),
     ]
 
     print(f"All {len(queries)} streaming queries running on one cluster")

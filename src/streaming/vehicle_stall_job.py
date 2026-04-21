@@ -63,6 +63,7 @@ def start(spark: SparkSession) -> list:
         col("data.latitude").alias("latitude"),
         col("data.longitude").alias("longitude"),
         col("data.timestamp").alias("timestamp"),
+        col("data.current_status").alias("current_status"),
     )
 
     input_schema = StructType([
@@ -72,6 +73,7 @@ def start(spark: SparkSession) -> list:
         StructField("latitude", DoubleType()),
         StructField("longitude", DoubleType()),
         StructField("timestamp", LongType()),
+        StructField("current_status", StringType()),
     ])
 
     stall_events = flat.groupBy("vehicle_id").applyInPandasWithState(

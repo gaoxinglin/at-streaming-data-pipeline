@@ -119,7 +119,7 @@ def test_trip_id_change_resets_state():
 
 def test_stall_with_prior_state():
     """Prior state of 2 readings + 1 new reading = stall at 3."""
-    prior = (-36.84, 174.76, 2, 900, "R1", "T1", 0)  # 7-tuple
+    prior = (-36.84, 174.76, 2, 900, "R1", "T1", 0, 0)  # 8-tuple; all_stopped_at=0
     readings = _readings_iter([
         {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
          "latitude": -36.84, "longitude": 174.76, "timestamp": 1000},

@@ -64,8 +64,6 @@ resource "azurerm_eventhub_namespace" "main" {
   tags = local.tags
 }
 
-# Let EH's managed identity write capture files into the storage account.
-# Capture without this fails silently — files never appear.
 resource "azurerm_role_assignment" "eh_to_storage" {
   scope                = azurerm_storage_account.lake.id
   role_definition_name = "Storage Blob Data Contributor"
@@ -77,10 +75,8 @@ resource "azurerm_eventhub" "topic" {
   name              = each.key
   namespace_id      = azurerm_eventhub_namespace.main.id
   partition_count   = 2
-  message_retention = 7 # days. Gives Databricks a full week to catch up from earliest offsets.
+  message_retention = 7
 
-  # Capture disabled — Bronze Delta tables are the authoritative raw store.
-  # Re-enable if you need a Avro backup independent of the Spark pipeline.
   capture_description {
     enabled             = false
     encoding            = "Avro"
@@ -99,8 +95,6 @@ resource "azurerm_eventhub" "topic" {
   depends_on = [azurerm_role_assignment.eh_to_storage]
 }
 
-# Single Send+Listen rule for the producer. We hand the connection string to
-# Key Vault; nothing else should hold it.
 resource "azurerm_eventhub_namespace_authorization_rule" "producer" {
   name                = "producer"
   namespace_name      = azurerm_eventhub_namespace.main.name
@@ -149,8 +143,6 @@ resource "azurerm_key_vault_secret" "at_api_key" {
 }
 
 # --- Container Registry ---
-# Hosts the at-producer image. Basic SKU is sufficient — one private image,
-# no geo-replication needed.
 
 resource "azurerm_container_registry" "main" {
   name                = "acr${var.project}${var.environment}${local.suffix}"
@@ -162,13 +154,6 @@ resource "azurerm_container_registry" "main" {
 }
 
 # --- AT Producer: Azure Container Instance ---
-# Replaces the Databricks at-producer job. The producer is a plain Python
-# loop — no Spark, no DBU charge. ACI on 0.25 vCPU costs ~$3/month vs ~$120+
-# for a continuous Databricks job cluster.
-#
-# Push the image before applying (or apply will create the ACI pointing at an
-# image that doesn't exist yet — it will restart until the image appears):
-#   az acr build --registry <acr_name> --image at-producer:latest .
 
 resource "azurerm_user_assigned_identity" "producer" {
   name                = "id-${var.project}-${var.environment}-producer"
@@ -221,6 +206,73 @@ resource "azurerm_container_group" "producer" {
   depends_on = [azurerm_role_assignment.producer_acr_pull]
 }
 
+# --- Databricks networking (VNet injection, no NAT gateway) ---
+# Workers get public IPs directly (no_public_ip = false), so no NAT gateway needed.
+# This costs ~$32/month less than the auto-managed VNet that Databricks creates.
+
+resource "azurerm_virtual_network" "databricks" {
+  name                = "workers-vnet"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  address_space       = ["10.179.0.0/16"]
+  tags                = local.tags
+}
+
+resource "azurerm_network_security_group" "databricks" {
+  name                = "workers-sg"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  tags                = local.tags
+}
+
+resource "azurerm_subnet" "databricks_public" {
+  name                 = "public"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.databricks.name
+  address_prefixes     = ["10.179.0.0/18"]
+
+  delegation {
+    name = "databricks-del"
+    service_delegation {
+      name = "Microsoft.Databricks/workspaces"
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action",
+      ]
+    }
+  }
+}
+
+resource "azurerm_subnet" "databricks_private" {
+  name                 = "private"
+  resource_group_name  = azurerm_resource_group.main.name
+  virtual_network_name = azurerm_virtual_network.databricks.name
+  address_prefixes     = ["10.179.64.0/18"]
+
+  delegation {
+    name = "databricks-del"
+    service_delegation {
+      name = "Microsoft.Databricks/workspaces"
+      actions = [
+        "Microsoft.Network/virtualNetworks/subnets/join/action",
+        "Microsoft.Network/virtualNetworks/subnets/prepareNetworkPolicies/action",
+        "Microsoft.Network/virtualNetworks/subnets/unprepareNetworkPolicies/action",
+      ]
+    }
+  }
+}
+
+resource "azurerm_subnet_network_security_group_association" "databricks_public" {
+  subnet_id                 = azurerm_subnet.databricks_public.id
+  network_security_group_id = azurerm_network_security_group.databricks.id
+}
+
+resource "azurerm_subnet_network_security_group_association" "databricks_private" {
+  subnet_id                 = azurerm_subnet.databricks_private.id
+  network_security_group_id = azurerm_network_security_group.databricks.id
+}
+
 # --- Databricks workspace ---
 
 resource "azurerm_databricks_workspace" "main" {
@@ -229,6 +281,15 @@ resource "azurerm_databricks_workspace" "main" {
   location                    = var.databricks_location  # Databricks not available in newzealandnorth
   sku                         = "premium"
   managed_resource_group_name = "rg-${var.project}-${var.environment}-managed"
+
+  custom_parameters {
+    no_public_ip                                         = false
+    virtual_network_id                                   = azurerm_virtual_network.databricks.id
+    public_subnet_name                                   = azurerm_subnet.databricks_public.name
+    private_subnet_name                                  = azurerm_subnet.databricks_private.name
+    public_subnet_network_security_group_association_id  = azurerm_subnet_network_security_group_association.databricks_public.id
+    private_subnet_network_security_group_association_id = azurerm_subnet_network_security_group_association.databricks_private.id
+  }
 
   tags = local.tags
 }

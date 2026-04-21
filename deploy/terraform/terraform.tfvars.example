@@ -5,6 +5,6 @@ owner = "you@example.com"
 # at_api_key = ""
 
 # Override these only if defaults clash.
-location    = "newzealandnorth"
+location    = "australiaeast"
 project     = "atpipe"
 environment = "dev"

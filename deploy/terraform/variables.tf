@@ -1,7 +1,7 @@
 variable "location" {
   description = "Azure region. Keep everything in one region — cross-region egress is what kills small budgets."
   type        = string
-  default     = "newzealandnorth"
+  default     = "australiaeast"
 }
 
 variable "project" {

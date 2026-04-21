@@ -9,7 +9,6 @@ from pyspark.sql.functions import (
     base64, col, current_timestamp, expr, from_unixtime, hour,
     lit, unix_timestamp, when,
 )
-from pyspark.sql.functions import uuid as spark_uuid
 
 # Producer-side event_ts sanity clamp constants (PRD Section 7a).
 # MIN_PLAUSIBLE rejects epoch-zero and pre-AT-GTFS timestamps.
@@ -47,7 +46,7 @@ def enrich_vehicle_positions(df: DataFrame) -> DataFrame:
     raw_ts = col("timestamp")
     clamped = _ts_clamped(raw_ts)
     return df.select(
-        spark_uuid().alias("event_id"),
+        expr("uuid()").alias("event_id"),
         current_timestamp().alias("ingested_at"),
         "vehicle_id", "trip_id", "route_id",
         "latitude", "longitude", "bearing",
@@ -67,7 +66,7 @@ def enrich_trip_updates(df: DataFrame) -> DataFrame:
     raw_ts = col("timestamp")
     clamped = _ts_clamped(raw_ts)
     return df.select(
-        spark_uuid().alias("event_id"),
+        expr("uuid()").alias("event_id"),
         current_timestamp().alias("ingested_at"),
         col("id").alias("source_id"),
         "trip_id", "route_id", "direction_id",
@@ -86,7 +85,7 @@ def enrich_service_alerts(df: DataFrame) -> DataFrame:
     raw_ts = col("timestamp")
     clamped = _ts_clamped(raw_ts)
     return df.select(
-        spark_uuid().alias("event_id"),
+        expr("uuid()").alias("event_id"),
         current_timestamp().alias("ingested_at"),
         col("id").alias("alert_id"),
         "route_id", "cause", "effect", "header_text", "description_text",

@@ -2,10 +2,10 @@
 
 import pytest
 from pyspark.sql.types import (
-    IntegerType, LongType, StringType, StructField, StructType, BooleanType,
+    BooleanType, IntegerType, LongType, StringType, StructField, StructType,
 )
 
-from src.streaming.delay_alert_job import detect_delays, DELAY_THRESHOLD
+from src.streaming.detection.delay import detect_delays, DELAY_THRESHOLD
 
 
 def _tu_schema():
@@ -34,47 +34,32 @@ def _make_tu(spark, **overrides):
     return spark.createDataFrame([defaults], schema=_tu_schema())
 
 
-# --- filter tests ---
-
 def test_below_threshold_filtered_out(spark):
-    """Trips with delay <= 300s should not produce alerts."""
-    df = _make_tu(spark, delay=300)
-    assert detect_delays(df).count() == 0
+    assert detect_delays(_make_tu(spark, delay=300)).count() == 0
 
 
 def test_above_threshold_passes(spark):
-    """Trips with delay > 300s should produce an alert."""
-    df = _make_tu(spark, delay=301)
-    assert detect_delays(df).count() == 1
+    assert detect_delays(_make_tu(spark, delay=301)).count() == 1
 
 
 def test_negative_delay_filtered_out(spark):
-    """Early arrivals (negative delay) should not produce alerts."""
-    df = _make_tu(spark, delay=-120)
-    assert detect_delays(df).count() == 0
+    assert detect_delays(_make_tu(spark, delay=-120)).count() == 0
 
-
-# --- severity classification ---
 
 def test_severity_moderate(spark):
-    """5-10 min delay → MODERATE."""
     row = detect_delays(_make_tu(spark, delay=400)).first()
     assert row.severity == "MODERATE"
 
 
 def test_severity_high(spark):
-    """10-20 min delay → HIGH."""
     row = detect_delays(_make_tu(spark, delay=900)).first()
     assert row.severity == "HIGH"
 
 
 def test_severity_severe(spark):
-    """20+ min delay → SEVERE."""
     row = detect_delays(_make_tu(spark, delay=1500)).first()
     assert row.severity == "SEVERE"
 
-
-# --- output schema ---
 
 def test_alert_has_expected_columns(spark):
     df = detect_delays(_make_tu(spark, delay=600))
@@ -84,7 +69,6 @@ def test_alert_has_expected_columns(spark):
 
 
 def test_fields_passthrough(spark):
-    """trip_id, route_id, delay should pass through unchanged."""
     row = detect_delays(_make_tu(spark, trip_id="T999", route_id="R888", delay=500)).first()
     assert row.trip_id == "T999"
     assert row.route_id == "R888"

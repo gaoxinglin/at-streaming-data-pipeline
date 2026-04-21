@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "BunchingAlert",
+  "namespace": "nz.at.alerts",
+  "doc": "Emitted when stop-level headway CV exceeds threshold (route-level bus bunching)",
+  "fields": [
+    {"name": "alert_id",       "type": "string"},
+    {"name": "route_id",       "type": "string"},
+    {"name": "direction_id",   "type": "int"},
+    {"name": "stop_id",        "type": ["null", "string"], "default": null},
+    {"name": "window_start",   "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "window_end",     "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "headway_cv",     "type": "float",            "doc": "Coefficient of variation; > 0.5 triggers alert"},
+    {"name": "trip_count",     "type": "int"},
+    {"name": "detected_at",    "type": {"type": "long", "logicalType": "timestamp-millis"}}
+  ]
+}

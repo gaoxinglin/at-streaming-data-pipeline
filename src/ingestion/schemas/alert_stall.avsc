@@ -1,0 +1,18 @@
+{
+  "type": "record",
+  "name": "StallAlert",
+  "namespace": "nz.at.alerts",
+  "doc": "Emitted when a vehicle reports the same GPS position for 3+ consecutive readings",
+  "fields": [
+    {"name": "alert_id",        "type": "string"},
+    {"name": "vehicle_id",      "type": "string"},
+    {"name": "route_id",        "type": ["null", "string"], "default": null},
+    {"name": "trip_id",         "type": ["null", "string"], "default": null},
+    {"name": "latitude",        "type": "double"},
+    {"name": "longitude",       "type": "double"},
+    {"name": "reading_count",   "type": "int",             "doc": "Consecutive readings within radius"},
+    {"name": "stall_duration_s","type": "int",             "doc": "Seconds from first to latest stall reading"},
+    {"name": "first_seen",      "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "detected_at",     "type": {"type": "long", "logicalType": "timestamp-millis"}}
+  ]
+}

@@ -79,11 +79,13 @@ resource "azurerm_eventhub" "topic" {
   partition_count   = 2
   message_retention = 7 # days. Gives Databricks a full week to catch up from earliest offsets.
 
+  # Capture disabled — Bronze Delta tables are the authoritative raw store.
+  # Re-enable if you need a Avro backup independent of the Spark pipeline.
   capture_description {
-    enabled             = true
+    enabled             = false
     encoding            = "Avro"
     interval_in_seconds = 300
-    size_limit_in_bytes = 314572800 # 300 MB
+    size_limit_in_bytes = 314572800
     skip_empty_archives = true
 
     destination {
@@ -144,6 +146,79 @@ resource "azurerm_key_vault_secret" "at_api_key" {
   key_vault_id = azurerm_key_vault.main.id
 
   depends_on = [azurerm_role_assignment.kv_admin]
+}
+
+# --- Container Registry ---
+# Hosts the at-producer image. Basic SKU is sufficient — one private image,
+# no geo-replication needed.
+
+resource "azurerm_container_registry" "main" {
+  name                = "acr${var.project}${var.environment}${local.suffix}"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  sku                 = "Basic"
+  admin_enabled       = false
+  tags                = local.tags
+}
+
+# --- AT Producer: Azure Container Instance ---
+# Replaces the Databricks at-producer job. The producer is a plain Python
+# loop — no Spark, no DBU charge. ACI on 0.25 vCPU costs ~$3/month vs ~$120+
+# for a continuous Databricks job cluster.
+#
+# Push the image before applying (or apply will create the ACI pointing at an
+# image that doesn't exist yet — it will restart until the image appears):
+#   az acr build --registry <acr_name> --image at-producer:latest .
+
+resource "azurerm_user_assigned_identity" "producer" {
+  name                = "id-${var.project}-${var.environment}-producer"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  tags                = local.tags
+}
+
+resource "azurerm_role_assignment" "producer_acr_pull" {
+  scope                = azurerm_container_registry.main.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.producer.principal_id
+}
+
+resource "azurerm_container_group" "producer" {
+  name                = "aci-${var.project}-${var.environment}-producer"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  ip_address_type     = "None"
+  os_type             = "Linux"
+  restart_policy      = "Always"
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.producer.id]
+  }
+
+  image_registry_credential {
+    server                    = azurerm_container_registry.main.login_server
+    user_assigned_identity_id = azurerm_user_assigned_identity.producer.id
+  }
+
+  container {
+    name   = "producer"
+    image  = "${azurerm_container_registry.main.login_server}/at-producer:latest"
+    cpu    = "0.25"
+    memory = "0.5"
+
+    environment_variables = {
+      KAFKA_BOOTSTRAP_SERVERS = "${azurerm_eventhub_namespace.main.name}.servicebus.windows.net:9093"
+    }
+
+    secure_environment_variables = {
+      AT_API_KEY                  = var.at_api_key
+      EVENTHUBS_CONNECTION_STRING = azurerm_eventhub_namespace_authorization_rule.producer.primary_connection_string
+    }
+  }
+
+  tags       = local.tags
+  depends_on = [azurerm_role_assignment.producer_acr_pull]
 }
 
 # --- Databricks workspace ---

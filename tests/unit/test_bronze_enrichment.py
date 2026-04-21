@@ -1,8 +1,9 @@
 """Test enrichment logic using PySpark batch mode — no Kafka needed."""
+import time
 import pytest
 from pyspark.sql.types import (
-    StructType, StructField, StringType, DoubleType,
-    FloatType, LongType, BooleanType, IntegerType,
+    BooleanType, DoubleType, FloatType, IntegerType, LongType,
+    StringType, StructField, StructType,
 )
 
 from src.streaming.bronze_ingestion import (
@@ -11,8 +12,10 @@ from src.streaming.bronze_ingestion import (
     enrich_service_alerts,
 )
 
+# Use a recent timestamp so event_ts_status == "ok" in tests.
+# Clamped timestamps would shift event_date to today and break date assertions.
+_NOW_TS = int(time.time()) - 10
 
-# -- vehicle positions --
 
 def _vp_schema():
     return StructType([
@@ -41,7 +44,7 @@ def _make_vp(spark, **overrides):
         "current_stop_sequence": None, "stop_id": None,
         "current_status": None, "congestion_level": None,
         "occupancy_status": None,
-        "timestamp": 1774345000,
+        "timestamp": _NOW_TS,
         "_raw_payload": "{}",
     }
     defaults.update(overrides)
@@ -55,14 +58,32 @@ def test_vp_has_audit_fields(spark):
 
 
 def test_vp_speed_passthrough(spark):
-    """AT legacy API returns km/h directly — no conversion."""
     result = enrich_vehicle_positions(_make_vp(spark, speed=59.0)).collect()[0]
     assert result["speed"] == pytest.approx(59.0, abs=0.1)
 
 
-def test_vp_event_date(spark):
+def test_vp_event_ts_fields_present(spark):
+    """event_ts, event_ts_raw, event_ts_status are all populated."""
     result = enrich_vehicle_positions(_make_vp(spark)).collect()[0]
-    assert str(result["event_date"]) == "2026-03-24"
+    assert result["event_ts"] is not None
+    assert result["event_ts_raw"] is not None
+    assert result["event_ts_status"] is not None
+
+
+def test_vp_recent_timestamp_ok_status(spark):
+    """Recent timestamp (within last hour) should have status 'ok'."""
+    result = enrich_vehicle_positions(_make_vp(spark)).collect()[0]
+    assert result["event_ts_status"] == "ok"
+
+
+def test_vp_event_date_not_null(spark):
+    result = enrich_vehicle_positions(_make_vp(spark)).collect()[0]
+    assert result["event_date"] is not None
+
+
+def test_vp_event_hour_not_null(spark):
+    result = enrich_vehicle_positions(_make_vp(spark)).collect()[0]
+    assert result["event_hour"] is not None
 
 
 def test_vp_null_speed(spark):
@@ -93,7 +114,7 @@ def _make_tu(spark, **overrides):
         "id": "tu1", "trip_id": "t1", "route_id": "r1",
         "direction_id": 0, "start_time": "08:00:00",
         "start_date": "20260326", "schedule_relationship": 0,
-        "delay": 360, "timestamp": 1774345000,
+        "delay": 360, "timestamp": _NOW_TS,
         "is_deleted": False,
         "_raw_payload": "{}",
     }
@@ -102,7 +123,6 @@ def _make_tu(spark, **overrides):
 
 
 def test_tu_source_id_preserved(spark):
-    """AT message id should be preserved as source_id for traceability."""
     result = enrich_trip_updates(_make_tu(spark)).collect()[0]
     assert result["source_id"] == "tu1"
 
@@ -112,9 +132,14 @@ def test_tu_delay_preserved(spark):
     assert result["delay"] == 360
 
 
-def test_tu_event_date(spark):
+def test_tu_event_ts_status_ok(spark):
     result = enrich_trip_updates(_make_tu(spark)).collect()[0]
-    assert str(result["event_date"]) == "2026-03-24"
+    assert result["event_ts_status"] == "ok"
+
+
+def test_tu_event_hour_not_null(spark):
+    result = enrich_trip_updates(_make_tu(spark)).collect()[0]
+    assert result["event_hour"] is not None
 
 
 # -- service alerts --
@@ -139,8 +164,8 @@ def _make_sa(spark, **overrides):
         "id": "sa1", "route_id": "NX1",
         "cause": "CONSTRUCTION", "effect": "DETOUR",
         "header_text": "Detour on NX1", "description_text": "Road works",
-        "active_period_start": 1774340000, "active_period_end": 1774350000,
-        "timestamp": 1774345000,
+        "active_period_start": _NOW_TS - 1000, "active_period_end": _NOW_TS + 1000,
+        "timestamp": _NOW_TS,
         "_raw_payload": "{}",
     }
     defaults.update(overrides)
@@ -156,3 +181,8 @@ def test_sa_has_audit_fields(spark):
     result = enrich_service_alerts(_make_sa(spark)).collect()[0]
     assert result["event_id"] is not None
     assert result["ingested_at"] is not None
+
+
+def test_sa_event_ts_status_ok(spark):
+    result = enrich_service_alerts(_make_sa(spark)).collect()[0]
+    assert result["event_ts_status"] == "ok"

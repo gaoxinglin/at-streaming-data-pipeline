@@ -7,79 +7,35 @@ and publishes alerts to `at.alerts` topic.
 
 import os
 
-import requests
 from dotenv import load_dotenv
 from src.streaming import kafka_utils
+from src.streaming.detection.delay import detect_delays, DELAY_THRESHOLD
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
-from pyspark.sql.functions import (
-    col, current_timestamp, expr, from_unixtime, lit, struct, to_date, to_json,
-    when,
-)
-from pyspark.sql.functions import uuid as spark_uuid
-
-
-DELAY_THRESHOLD = 300  # 5 minutes in seconds
-WATERMARK_DELAY = "10 minutes"
-
-# --- detection logic (importable for testing) ---
-
-
-def detect_delays(df: DataFrame) -> DataFrame:
-    """Filter trip_updates with delay > 5 min and classify severity."""
-    return (
-        df.filter(col("delay") > DELAY_THRESHOLD)
-        .select(
-            spark_uuid().alias("event_id"),
-            "trip_id",
-            "route_id",
-            "delay",
-            when(col("delay") <= 600, lit("MODERATE"))     # 5-10 min
-            .when(col("delay") <= 1200, lit("HIGH"))       # 10-20 min
-            .otherwise(lit("SEVERE"))                      # 20+ min
-            .alias("severity"),
-            "start_time",
-            "start_date",
-            col("timestamp").alias("event_timestamp"),
-            current_timestamp().alias("detected_at"),
-        )
-    )
+from pyspark.sql.functions import col, expr, from_unixtime, struct, to_date, to_json
 
 
 def format_for_kafka(df: DataFrame) -> DataFrame:
-    """Prepare alert DataFrame for Kafka sink: key + JSON value."""
     return df.select(
         col("trip_id").cast("string").alias("key"),
         to_json(struct("*")).alias("value"),
     )
 
 
-if __name__ == "__main__":
-    load_dotenv()
-
+def start(spark: SparkSession) -> list:
     KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
     STARTING_OFFSETS = os.getenv("KAFKA_STARTING_OFFSETS", "latest")
     MAX_OFFSETS_PER_TRIGGER = int(os.getenv("TRIP_UPDATES_MAX_OFFSETS_PER_TRIGGER", "2000"))
     CHECKPOINT_BASE = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints")
     OUTPUT_PATH = os.getenv("OUTPUT_PATH", "/tmp/bronze")
-    OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "parquet")
+    OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "delta")
     SOURCE_TOPIC = "at.trip_updates"
     SINK_TOPIC = "at.alerts"
-
-    spark = (
-        SparkSession.builder
-        .appName("delay_alert_detection")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.13:4.1.1,"
-                "org.apache.spark:spark-avro_2.13:4.1.1")
-        .getOrCreate()
-    )
-    spark.sparkContext.setLogLevel("WARN")
+    WATERMARK_DELAY = "5 minutes"
 
     avro_schema = kafka_utils.load_schema(SOURCE_TOPIC, SCHEMA_REGISTRY_URL)
 
-    # read from kafka
     raw = (
         spark.readStream.format("kafka")
         .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP))
@@ -91,48 +47,30 @@ if __name__ == "__main__":
 
     parsed = raw.select(
         from_avro(expr(kafka_utils.AVRO_VALUE_EXPR), avro_schema).alias("data"),
-        col("timestamp").alias("kafka_timestamp"),
     )
 
-    # flatten + watermark on event_ts (business time, not kafka ingestion time)
     flat = parsed.select(
         "data.*",
         from_unixtime(col("data.timestamp")).cast("timestamp").alias("event_ts"),
     ).withWatermark("event_ts", WATERMARK_DELAY)
 
-    # detect delays
     alerts = detect_delays(flat)
-
-    # --- foreachBatch: write to Kafka + Bronze ---
 
     def write_batch(batch_df, batch_id):
         if batch_df.isEmpty():
             return
-
         batch_df.persist()
-
         try:
-            # 1. Write to Kafka (at.alerts)
-            kafka_ready = format_for_kafka(batch_df)
-            (
-                kafka_ready.write
-                .format("kafka")
-                .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP))
-                .option("topic", kafka_utils.topic_name(SINK_TOPIC))
+            format_for_kafka(batch_df).write \
+                .format("kafka") \
+                .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP)) \
+                .option("topic", kafka_utils.topic_name(SINK_TOPIC)) \
                 .save()
-            )
 
-            # 2. Write to Bronze table (bronze.delay_alerts)
-            bronze_df = batch_df.withColumn(
-                "event_date", to_date(from_unixtime(col("event_timestamp")))
-            )
-            (
-                bronze_df.write
-                .format(OUTPUT_FORMAT)
-                .mode("append")
-                .partitionBy("event_date")
+            batch_df.withColumn("event_date", to_date(from_unixtime(col("event_timestamp")))) \
+                .write.format(OUTPUT_FORMAT).mode("append") \
+                .partitionBy("event_date") \
                 .save(f"{OUTPUT_PATH}/delay_alerts")
-            )
         finally:
             batch_df.unpersist()
 
@@ -147,6 +85,21 @@ if __name__ == "__main__":
     )
 
     print(f"Delay alert job started — filtering {SOURCE_TOPIC} (delay > {DELAY_THRESHOLD}s) → {SINK_TOPIC}")
+    return [query]
+
+
+if __name__ == "__main__":
+    load_dotenv()
+
+    spark = (
+        SparkSession.builder
+        .appName("delay_alert_detection")
+        .config("spark.jars.packages",
+                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
+                "org.apache.spark:spark-avro_2.12:3.4.1")
+        .getOrCreate()
+    )
+    spark.sparkContext.setLogLevel("WARN")
 
     from src.streaming._shutdown import run_until_shutdown
-    run_until_shutdown(spark, query, job_label="delay_alerts")
+    run_until_shutdown(spark, *start(spark), job_label="delay_alerts")

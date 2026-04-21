@@ -111,59 +111,13 @@ locals {
   repo_path = databricks_repo.pipeline.path
 }
 
-# --- Job: AT Producer ---
-# Continuous — Databricks restarts immediately on exit or failure.
+# --- Job: Streaming Pipeline (all queries on one cluster) ---
+# Bronze ingestion + Q1 delay alerts + Q2 vehicle stalls + Q3 headway regularity
+# run as concurrent Structured Streaming queries in a single process.
+# Previously 4 jobs × mixed D2s/D4s clusters; now one D4s 24/7 — ~57% cheaper.
 
-resource "databricks_job" "producer" {
-  name = "at-producer"
-
-  git_source {
-    url      = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
-    branch   = "main"
-    provider = "gitHub"
-  }
-
-  task {
-    task_key = "produce"
-
-    new_cluster {
-      spark_version = data.databricks_spark_version.lts.id
-      node_type_id  = data.databricks_node_type.d2s.id
-      num_workers   = 0
-
-      # Spot with on-demand fallback — checkpoint + continuous restart means
-      # an eviction causes at most one polling cycle of data loss (~30s).
-      azure_attributes {
-        availability       = "SPOT_WITH_FALLBACK_AZURE"
-        spot_bid_max_price = -1
-      }
-
-      spark_conf = {
-        "spark.master"                     = "local[*]"
-        "spark.databricks.cluster.profile" = "singleNode"
-      }
-
-      spark_env_vars = {
-        AT_API_KEY                  = "{{secrets/at-pipeline/at-api-key}}"
-        EVENTHUBS_CONNECTION_STRING = "{{secrets/at-pipeline/eventhubs-connection-string}}"
-        KAFKA_BOOTSTRAP_SERVERS     = "${azurerm_eventhub_namespace.main.name}.servicebus.windows.net:9093"
-      }
-    }
-
-    spark_python_task {
-      python_file = "src/ingestion/at_producer.py"
-    }
-  }
-
-  continuous { pause_status = "UNPAUSED" }
-
-  depends_on = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
-}
-
-# --- Job: Bronze Ingestion ---
-
-resource "databricks_job" "bronze_ingestion" {
-  name = "bronze-ingestion"
+resource "databricks_job" "streaming" {
+  name = "at-streaming-pipeline"
 
   git_source {
     url      = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
@@ -172,7 +126,7 @@ resource "databricks_job" "bronze_ingestion" {
   }
 
   task {
-    task_key = "ingest"
+    task_key = "stream"
 
     new_cluster {
       spark_version  = local.streaming_cluster_base.spark_version
@@ -195,136 +149,7 @@ resource "databricks_job" "bronze_ingestion" {
     }
 
     spark_python_task {
-      python_file = "src/streaming/bronze_ingestion.py"
-    }
-  }
-
-  continuous { pause_status = "UNPAUSED" }
-  depends_on  = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
-}
-
-# --- Job: Q1 Delay Alert ---
-
-resource "databricks_job" "delay_alert" {
-  name = "q1-delay-alert"
-
-  git_source {
-    url      = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
-    branch   = "main"
-    provider = "gitHub"
-  }
-
-  task {
-    task_key = "detect"
-
-    new_cluster {
-      spark_version           = local.streaming_cluster_base.spark_version
-      node_type_id            = local.streaming_cluster_base.node_type_id
-      num_workers             = local.streaming_cluster_base.num_workers
-      spark_conf              = local.streaming_cluster_base.spark_conf
-      spark_env_vars          = local.streaming_env
-
-      azure_attributes {
-        availability       = "SPOT_WITH_FALLBACK_AZURE"
-        spot_bid_max_price = -1
-      }
-
-      dynamic "library" {
-        for_each = local.kafka_libs
-        content {
-          maven { coordinates = library.value.maven.coordinates }
-        }
-      }
-    }
-
-    spark_python_task {
-      python_file = "src/streaming/delay_alert_job.py"
-    }
-  }
-
-  continuous { pause_status = "UNPAUSED" }
-  depends_on  = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
-}
-
-# --- Job: Q2 Vehicle Stall ---
-
-resource "databricks_job" "vehicle_stall" {
-  name = "q2-vehicle-stall"
-
-  git_source {
-    url      = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
-    branch   = "main"
-    provider = "gitHub"
-  }
-
-  task {
-    task_key = "detect"
-
-    new_cluster {
-      spark_version  = local.streaming_cluster_base.spark_version
-      node_type_id   = data.databricks_node_type.d4s.id
-      num_workers    = local.streaming_cluster_base.num_workers
-      spark_conf     = local.streaming_cluster_base.spark_conf
-      spark_env_vars = local.streaming_env
-
-      azure_attributes {
-        availability       = "SPOT_WITH_FALLBACK_AZURE"
-        spot_bid_max_price = -1
-      }
-
-      dynamic "library" {
-        for_each = local.kafka_libs
-        content {
-          maven { coordinates = library.value.maven.coordinates }
-        }
-      }
-    }
-
-    spark_python_task {
-      python_file = "src/streaming/vehicle_stall_job.py"
-    }
-  }
-
-  continuous { pause_status = "UNPAUSED" }
-  depends_on  = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
-}
-
-# --- Job: Q3 Headway Regularity ---
-
-resource "databricks_job" "headway_regularity" {
-  name = "q3-headway-regularity"
-
-  git_source {
-    url      = "https://github.com/${var.github_username}/at-streaming-data-pipeline"
-    branch   = "main"
-    provider = "gitHub"
-  }
-
-  task {
-    task_key = "detect"
-
-    new_cluster {
-      spark_version           = local.streaming_cluster_base.spark_version
-      node_type_id            = local.streaming_cluster_base.node_type_id
-      num_workers             = local.streaming_cluster_base.num_workers
-      spark_conf              = local.streaming_cluster_base.spark_conf
-      spark_env_vars          = local.streaming_env
-
-      azure_attributes {
-        availability       = "SPOT_WITH_FALLBACK_AZURE"
-        spot_bid_max_price = -1
-      }
-
-      dynamic "library" {
-        for_each = local.kafka_libs
-        content {
-          maven { coordinates = library.value.maven.coordinates }
-        }
-      }
-    }
-
-    spark_python_task {
-      python_file = "src/streaming/headway_regularity_job.py"
+      python_file = "src/streaming/main.py"
     }
   }
 
@@ -383,117 +208,3 @@ resource "databricks_job" "dbt" {
   depends_on = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
 }
 
-# --- Night-mode scheduler: pause / resume Q1-Q3 detection jobs ---
-#
-# AT off-peak is 22:00-06:00 NZST (5-min polling, minimal event volume).
-# Detection jobs (Q1-Q3) pause at 22:00 and resume at 06:00, saving ~8hr of
-# cluster cost per day. Producer + bronze ingest stay up to keep the capture
-# buffer warm and avoid checkpoint gaps.
-#
-# The notebook calls the Databricks Jobs API using the cluster's ambient token
-# (dbutils.notebook.getContext().apiToken()) — no stored PAT needed.
-
-resource "databricks_notebook" "toggle_detection" {
-  path     = "/Shared/at-pipeline/toggle_detection_jobs"
-  language = "PYTHON"
-
-  content_base64 = base64encode(<<-EOF
-    import requests
-
-    dbutils.widgets.addText("action", "PAUSED")
-    action = dbutils.widgets.get("action")
-
-    ctx   = dbutils.notebook.getContext()
-    token = ctx.apiToken().get()
-    host  = ctx.apiUrl().get()
-
-    target = {"q1-delay-alert", "q2-vehicle-stall", "q3-headway-regularity"}
-    hdrs   = {"Authorization": f"Bearer {token}"}
-
-    jobs = requests.get(f"{host}/api/2.1/jobs/list?limit=100", headers=hdrs).json().get("jobs", [])
-    for job in jobs:
-        if job["settings"]["name"] in target:
-            requests.post(f"{host}/api/2.1/jobs/update", headers=hdrs, json={
-                "job_id": job["job_id"],
-                "new_settings": {"continuous": {"pause_status": action}},
-            })
-            print(f"[{action}] {job['settings']['name']} (id={job['job_id']})")
-    EOF
-  )
-}
-
-resource "databricks_job" "pause_detection" {
-  name = "night-pause-detection"
-
-  task {
-    task_key = "pause"
-
-    notebook_task {
-      notebook_path   = databricks_notebook.toggle_detection.path
-      base_parameters = { action = "PAUSED" }
-    }
-
-    new_cluster {
-      spark_version = data.databricks_spark_version.lts.id
-      node_type_id  = data.databricks_node_type.d2s.id
-      num_workers   = 0
-
-      azure_attributes {
-        availability       = "SPOT_WITH_FALLBACK_AZURE"
-        spot_bid_max_price = -1
-      }
-
-      spark_conf = {
-        "spark.master"                     = "local[*]"
-        "spark.databricks.cluster.profile" = "singleNode"
-      }
-    }
-  }
-
-  # 22:00 NZST daily — AT off-peak begins
-  schedule {
-    quartz_cron_expression = "0 0 22 * * ?"
-    timezone_id            = "Pacific/Auckland"
-    pause_status           = "UNPAUSED"
-  }
-
-  depends_on = [databricks_notebook.toggle_detection]
-}
-
-resource "databricks_job" "resume_detection" {
-  name = "morning-resume-detection"
-
-  task {
-    task_key = "resume"
-
-    notebook_task {
-      notebook_path   = databricks_notebook.toggle_detection.path
-      base_parameters = { action = "UNPAUSED" }
-    }
-
-    new_cluster {
-      spark_version = data.databricks_spark_version.lts.id
-      node_type_id  = data.databricks_node_type.d2s.id
-      num_workers   = 0
-
-      azure_attributes {
-        availability       = "SPOT_WITH_FALLBACK_AZURE"
-        spot_bid_max_price = -1
-      }
-
-      spark_conf = {
-        "spark.master"                     = "local[*]"
-        "spark.databricks.cluster.profile" = "singleNode"
-      }
-    }
-  }
-
-  # 06:00 NZST daily — AT peak begins
-  schedule {
-    quartz_cron_expression = "0 0 6 * * ?"
-    timezone_id            = "Pacific/Auckland"
-    pause_status           = "UNPAUSED"
-  }
-
-  depends_on = [databricks_notebook.toggle_detection]
-}

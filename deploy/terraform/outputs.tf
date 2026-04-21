@@ -1,3 +1,13 @@
+output "acr_login_server" {
+  description = "ACR login server. Build and push the producer image here before terraform apply."
+  value       = azurerm_container_registry.main.login_server
+}
+
+output "producer_image_build_cmd" {
+  description = "Run this from the repo root to build and push the producer image via ACR Tasks."
+  value       = "az acr build --registry ${azurerm_container_registry.main.name} --image at-producer:latest ."
+}
+
 output "resource_group_name" {
   value = azurerm_resource_group.main.name
 }

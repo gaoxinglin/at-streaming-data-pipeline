@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "AlertEnvelope",
+  "namespace": "nz.at.alerts",
+  "doc": "Shared envelope for all at.alerts topic messages (DELAY, STALL, BUNCHING)",
+  "fields": [
+    {"name": "alert_type",  "type": {"type": "enum", "name": "AlertType",
+                                     "symbols": ["DELAY", "STALL", "BUNCHING"]}},
+    {"name": "alert_id",    "type": "string"},
+    {"name": "route_id",    "type": ["null", "string"],  "default": null},
+    {"name": "vehicle_id",  "type": ["null", "string"],  "default": null},
+    {"name": "trip_id",     "type": ["null", "string"],  "default": null},
+    {"name": "event_ts",    "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "detected_at", "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "payload",     "type": "string", "doc": "Type-specific JSON blob"}
+  ]
+}

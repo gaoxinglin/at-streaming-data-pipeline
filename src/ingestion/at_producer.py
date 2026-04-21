@@ -8,8 +8,6 @@ from datetime import datetime
 import fastavro
 import requests
 from confluent_kafka import Producer
-from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroSerializer
 from confluent_kafka.serialization import MessageField, SerializationContext, StringSerializer
 from dotenv import load_dotenv
 
@@ -188,6 +186,8 @@ def _build_value_serializers():
             topic: _FastavroSerializer(_load_schema(cfg["schema_file"]))
             for topic, cfg in FEEDS.items()
         }
+    from confluent_kafka.schema_registry import SchemaRegistryClient
+    from confluent_kafka.schema_registry.avro import AvroSerializer
     sr_client = SchemaRegistryClient({"url": SCHEMA_REGISTRY_URL})
     return {
         topic: AvroSerializer(sr_client, _load_schema(cfg["schema_file"]))

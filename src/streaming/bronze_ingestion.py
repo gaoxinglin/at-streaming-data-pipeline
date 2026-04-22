@@ -6,16 +6,23 @@ from src.streaming import kafka_utils
 from pyspark.sql import SparkSession, DataFrame
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    base64, col, current_timestamp, expr, from_unixtime, hour,
-    lit, unix_timestamp, when,
+    base64,
+    col,
+    current_timestamp,
+    expr,
+    from_unixtime,
+    hour,
+    lit,
+    unix_timestamp,
+    when,
 )
 
 # Producer-side event_ts sanity clamp constants (PRD Section 7a).
 # MIN_PLAUSIBLE rejects epoch-zero and pre-AT-GTFS timestamps.
 # Clamping here (not producer) keeps Avro schemas unchanged; semantics identical.
 _MIN_PLAUSIBLE_TS = 1_600_000_000  # ~2020-09-13
-_MAX_PAST_SEC = 3600               # 1 hour
-_MAX_FUTURE_SEC = 300              # 5 minutes
+_MAX_PAST_SEC = 3600  # 1 hour
+_MAX_FUTURE_SEC = 300  # 5 minutes
 
 
 def _ts_status(ts_col):
@@ -42,17 +49,25 @@ def _ts_clamped(ts_col):
 
 # --- enrichment functions (importable for testing) ---
 
+
 def enrich_vehicle_positions(df: DataFrame) -> DataFrame:
     raw_ts = col("timestamp")
     clamped = _ts_clamped(raw_ts)
     return df.select(
         expr("uuid()").alias("event_id"),
         current_timestamp().alias("ingested_at"),
-        "vehicle_id", "trip_id", "route_id",
-        "latitude", "longitude", "bearing",
+        "vehicle_id",
+        "trip_id",
+        "route_id",
+        "latitude",
+        "longitude",
+        "bearing",
         "speed",  # AT legacy API returns km/h directly
-        "current_stop_sequence", "stop_id", "current_status",
-        "congestion_level", "occupancy_status",
+        "current_stop_sequence",
+        "stop_id",
+        "current_status",
+        "congestion_level",
+        "occupancy_status",
         from_unixtime(clamped).cast("timestamp").alias("event_ts"),
         from_unixtime(raw_ts).cast("timestamp").alias("event_ts_raw"),
         _ts_status(raw_ts).alias("event_ts_status"),
@@ -69,13 +84,18 @@ def enrich_trip_updates(df: DataFrame) -> DataFrame:
         expr("uuid()").alias("event_id"),
         current_timestamp().alias("ingested_at"),
         col("id").alias("source_id"),
-        "trip_id", "route_id", "direction_id",
-        "start_time", "start_date", "schedule_relationship",
+        "trip_id",
+        "route_id",
+        "direction_id",
+        "start_time",
+        "start_date",
+        "schedule_relationship",
         "delay",
         from_unixtime(clamped).cast("timestamp").alias("event_ts"),
         from_unixtime(raw_ts).cast("timestamp").alias("event_ts_raw"),
         _ts_status(raw_ts).alias("event_ts_status"),
-        "is_deleted", "_raw_payload",
+        "is_deleted",
+        "_raw_payload",
         from_unixtime(clamped).cast("date").alias("event_date"),
         hour(from_unixtime(clamped).cast("timestamp")).alias("event_hour"),
     )
@@ -88,8 +108,14 @@ def enrich_service_alerts(df: DataFrame) -> DataFrame:
         expr("uuid()").alias("event_id"),
         current_timestamp().alias("ingested_at"),
         col("id").alias("alert_id"),
-        "route_id", "cause", "effect", "header_text", "description_text",
-        from_unixtime("active_period_start").cast("timestamp").alias("active_period_start"),
+        "route_id",
+        "cause",
+        "effect",
+        "header_text",
+        "description_text",
+        from_unixtime("active_period_start")
+        .cast("timestamp")
+        .alias("active_period_start"),
         from_unixtime("active_period_end").cast("timestamp").alias("active_period_end"),
         from_unixtime(clamped).cast("timestamp").alias("event_ts"),
         from_unixtime(raw_ts).cast("timestamp").alias("event_ts_raw"),
@@ -110,29 +136,47 @@ TOPIC_CONFIG = {
     "at.vehicle_positions": {
         "key_alias": "vehicle_id",
         "flatten": [
-            "data.vehicle_id", "data.trip_id", "data.route_id",
-            "data.latitude", "data.longitude", "data.bearing", "data.speed",
-            "data.current_stop_sequence", "data.stop_id", "data.current_status",
-            "data.congestion_level", "data.occupancy_status",
+            "data.vehicle_id",
+            "data.trip_id",
+            "data.route_id",
+            "data.latitude",
+            "data.longitude",
+            "data.bearing",
+            "data.speed",
+            "data.current_stop_sequence",
+            "data.stop_id",
+            "data.current_status",
+            "data.congestion_level",
+            "data.occupancy_status",
             "data.timestamp",
         ],
     },
     "at.trip_updates": {
         "key_alias": "trip_id",
         "flatten": [
-            "data.id", "data.trip_id", "data.route_id",
-            "data.direction_id", "data.start_time", "data.start_date",
-            "data.schedule_relationship", "data.delay",
-            "data.timestamp", "data.is_deleted",
+            "data.id",
+            "data.trip_id",
+            "data.route_id",
+            "data.direction_id",
+            "data.start_time",
+            "data.start_date",
+            "data.schedule_relationship",
+            "data.delay",
+            "data.timestamp",
+            "data.is_deleted",
         ],
     },
     "at.service_alerts": {
         "key_alias": "alert_id",
         "flatten": [
-            "data.id", "data.route_id",
-            "data.cause", "data.effect",
-            "data.header_text", "data.description_text",
-            "data.active_period_start", "data.active_period_end",
+            "data.id",
+            "data.route_id",
+            "data.cause",
+            "data.effect",
+            "data.header_text",
+            "data.description_text",
+            "data.active_period_start",
+            "data.active_period_end",
             "data.timestamp",
         ],
     },
@@ -179,8 +223,7 @@ def start(spark: SparkSession) -> list:
         enriched = ENRICH_FNS[topic](flat)
 
         q = (
-            enriched.writeStream
-            .format(OUTPUT_FORMAT)
+            enriched.writeStream.format(OUTPUT_FORMAT)
             .option("path", f"{OUTPUT_BASE}/{table_name}")
             .option("checkpointLocation", f"{CHECKPOINT_BASE}/{table_name}")
             .partitionBy("event_date", "event_hour")
@@ -199,14 +242,16 @@ if __name__ == "__main__":
     load_dotenv()
 
     spark = (
-        SparkSession.builder
-        .appName("bronze_ingestion")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
-                "org.apache.spark:spark-avro_2.12:3.4.1")
+        SparkSession.builder.appName("bronze_ingestion")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
+            "org.apache.spark:spark-avro_2.12:3.4.1",
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, *start(spark), job_label="bronze_ingestion")

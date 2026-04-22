@@ -32,8 +32,14 @@ REFRESH_INTERVAL = 30
 HISTORY_WINDOW = 300  # 5 minutes
 DISPLAY_TIMEZONE = "Pacific/Auckland"
 DISPLAY_TS_COLS = {
-    "detected_at", "first_seen", "stall_detected_ts",
-    "window_start", "event_ts", "trip_update_time", "alert_time", "vehicle_time",
+    "detected_at",
+    "first_seen",
+    "stall_detected_ts",
+    "window_start",
+    "event_ts",
+    "trip_update_time",
+    "alert_time",
+    "vehicle_time",
 }
 EPOCH_SECOND_TS_COLS = {"stall_detected_ts", "event_timestamp"}
 
@@ -51,6 +57,7 @@ st.set_page_config(
 
 # --- Kafka helpers ---
 
+
 def _make_consumer(group_id: str, topics: list[str]) -> Consumer:
     config = {
         "bootstrap.servers": KAFKA_BOOTSTRAP,
@@ -59,18 +66,22 @@ def _make_consumer(group_id: str, topics: list[str]) -> Consumer:
         "enable.auto.commit": False,
     }
     if CLOUD_MODE:
-        config.update({
-            "security.protocol": "SASL_SSL",
-            "sasl.mechanism": "PLAIN",
-            "sasl.username": "$ConnectionString",
-            "sasl.password": EVENTHUBS_CONNECTION_STRING,
-        })
+        config.update(
+            {
+                "security.protocol": "SASL_SSL",
+                "sasl.mechanism": "PLAIN",
+                "sasl.username": "$ConnectionString",
+                "sasl.password": EVENTHUBS_CONNECTION_STRING,
+            }
+        )
     c = Consumer(config)
     c.subscribe(topics)
     return c
 
 
-def _poll_messages(consumer: Consumer, max_messages: int, timeout: float = 1.0) -> list[dict]:
+def _poll_messages(
+    consumer: Consumer, max_messages: int, timeout: float = 1.0
+) -> list[dict]:
     msgs = []
     deadline = time.time() + timeout
     while len(msgs) < max_messages and time.time() < deadline:
@@ -110,12 +121,15 @@ def _prune_buffer(buf: list, window_s: int = HISTORY_WINDOW) -> list:
 
 # --- UI helpers ---
 
+
 def _parse_ts_col(series: pd.Series, col_name: str) -> pd.Series:
     numeric_first = col_name in EPOCH_SECOND_TS_COLS or "detected" in col_name.lower()
     if numeric_first:
         numeric = pd.to_numeric(series, errors="coerce")
         if numeric.notna().any():
-            return pd.to_datetime(numeric, unit="s", errors="coerce", utc=True).dt.tz_convert(DISPLAY_TIMEZONE)
+            return pd.to_datetime(
+                numeric, unit="s", errors="coerce", utc=True
+            ).dt.tz_convert(DISPLAY_TIMEZONE)
     parsed = pd.to_datetime(series, errors="coerce")
     if parsed.notna().any():
         if getattr(parsed.dt, "tz", None) is not None:
@@ -123,7 +137,9 @@ def _parse_ts_col(series: pd.Series, col_name: str) -> pd.Series:
         return parsed.dt.tz_localize(DISPLAY_TIMEZONE)
     numeric = pd.to_numeric(series, errors="coerce")
     if numeric.notna().any():
-        return pd.to_datetime(numeric, unit="s", errors="coerce", utc=True).dt.tz_convert(DISPLAY_TIMEZONE)
+        return pd.to_datetime(
+            numeric, unit="s", errors="coerce", utc=True
+        ).dt.tz_convert(DISPLAY_TIMEZONE)
     return parsed
 
 
@@ -194,6 +210,7 @@ for m in alerts_buf:
     elif "stall_duration_s" in m or "reading_count" in m:
         stall_events.append(m)
 
+
 # Q2: one row per stalled vehicle — the detection code emits a new event each time
 # reading_count increments, so raw stall_events overcounts. Keep max reading_count
 # snapshot per (vehicle_id, route_id, trip_id) to show current stall state.
@@ -210,6 +227,7 @@ def _dedup_stalls(events: list[dict]) -> list[dict]:
     idx = df.groupby(key_cols)["reading_count"].idxmax()
     return df.loc[idx].to_dict("records")
 
+
 stall_events = _dedup_stalls(stall_events)
 
 
@@ -224,7 +242,10 @@ c1.metric("Delay Alerts (Q1)", len(delay_alerts), help="Last 5 min")
 c2.metric("Stall Events (Q2)", len(stall_events), help="Last 5 min")
 if hw_buf:
     df_hw_summary = pd.DataFrame(hw_buf)
-    c3.metric("Routes reporting (Q3)", int(df_hw_summary.get("route_id", pd.Series()).nunique()))
+    c3.metric(
+        "Routes reporting (Q3)",
+        int(df_hw_summary.get("route_id", pd.Series()).nunique()),
+    )
     # Count unique (route_id, direction_id) pairs flagged as bunching, not window count.
     bunching_mask = df_hw_summary.get("is_bunching", pd.Series(dtype=bool))
     bunching_routes = (
@@ -232,7 +253,11 @@ if hw_buf:
         if bunching_mask.any() and "route_id" in df_hw_summary.columns
         else pd.DataFrame()
     )
-    c4.metric("Bunching routes (Q3)", len(bunching_routes), help="Unique (route, direction) pairs in last 5 min")
+    c4.metric(
+        "Bunching routes (Q3)",
+        len(bunching_routes),
+        help="Unique (route, direction) pairs in last 5 min",
+    )
 else:
     c3.metric("Routes reporting (Q3)", "—")
     c4.metric("Bunching events (Q3)", "—")
@@ -245,7 +270,11 @@ st.divider()
 st.subheader("🗺 Auckland — Vehicle Stall Density")
 
 map_rows = [
-    {"lat": float(m["latitude"]), "lon": float(m["longitude"]), "reading_count": int(m.get("reading_count", 1))}
+    {
+        "lat": float(m["latitude"]),
+        "lon": float(m["longitude"]),
+        "reading_count": int(m.get("reading_count", 1)),
+    }
     for m in stall_events
     if m.get("latitude") and m.get("longitude")
 ]
@@ -256,7 +285,10 @@ if map_rows:
         pdk.Deck(
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
             initial_view_state=pdk.ViewState(
-                latitude=-36.86, longitude=174.76, zoom=11, pitch=0,
+                latitude=-36.86,
+                longitude=174.76,
+                zoom=11,
+                pitch=0,
             ),
             layers=[
                 pdk.Layer(
@@ -293,8 +325,10 @@ st.subheader("Q1 — Delay Alerts")
 
 if delay_alerts:
     df_d = pd.DataFrame(delay_alerts)
-    sev_counts = df_d.get("severity", pd.Series()).value_counts().reindex(
-        ["MODERATE", "HIGH", "SEVERE"], fill_value=0
+    sev_counts = (
+        df_d.get("severity", pd.Series())
+        .value_counts()
+        .reindex(["MODERATE", "HIGH", "SEVERE"], fill_value=0)
     )
     s1, s2, s3 = st.columns(3)
     s1.metric("🟡 MODERATE", int(sev_counts.get("MODERATE", 0)))
@@ -303,9 +337,13 @@ if delay_alerts:
 
     f1, f2 = st.columns(2)
     severity_focus = f1.selectbox(
-        "Severity filter", options=["SEVERE", "HIGH", "MODERATE", "ALL"], index=0,
+        "Severity filter",
+        options=["SEVERE", "HIGH", "MODERATE", "ALL"],
+        index=0,
     )
-    trip_options = ["ALL"] + sorted(df_d.get("trip_id", pd.Series(dtype=str)).dropna().astype(str).unique())
+    trip_options = ["ALL"] + sorted(
+        df_d.get("trip_id", pd.Series(dtype=str)).dropna().astype(str).unique()
+    )
     selected_trip = f2.selectbox("Trip", options=trip_options)
 
     filtered = delay_alerts
@@ -316,7 +354,14 @@ if delay_alerts:
 
     _display_table(
         filtered,
-        preferred_cols=["alert_id", "trip_id", "route_id", "delay_s", "severity", "detected_at"],
+        preferred_cols=[
+            "alert_id",
+            "trip_id",
+            "route_id",
+            "delay_s",
+            "severity",
+            "detected_at",
+        ],
         sort_candidates=["detected_at", "_received_at"],
         dedup_cols=["trip_id", "alert_id"],
         rename_map={"delay": "delay_s", "event_id": "alert_id"},
@@ -335,8 +380,15 @@ if stall_events:
     _display_table(
         stall_events,
         preferred_cols=[
-            "stall_id", "vehicle_id", "route_id", "reading_count",
-            "first_seen", "stall_detected_ts", "latitude", "longitude", "detected_at",
+            "stall_id",
+            "vehicle_id",
+            "route_id",
+            "reading_count",
+            "first_seen",
+            "stall_detected_ts",
+            "latitude",
+            "longitude",
+            "detected_at",
         ],
         sort_candidates=["detected_at", "stall_detected_ts", "_received_at"],
         dedup_cols=["stall_id"],
@@ -363,17 +415,33 @@ st.warning(
 if hw_buf:
     df_hw = pd.DataFrame(hw_buf)
     avg_cv = df_hw.get("headway_cv", pd.Series(dtype=float)).mean()
-    st.caption(f"Avg headway CV: {avg_cv:.3f}" if pd.notna(avg_cv) else "Avg headway CV: —")
+    st.caption(
+        f"Avg headway CV: {avg_cv:.3f}" if pd.notna(avg_cv) else "Avg headway CV: —"
+    )
 
-    bunching = df_hw[df_hw.get("is_bunching", False)] if "is_bunching" in df_hw.columns else pd.DataFrame()
+    bunching = (
+        df_hw[df_hw.get("is_bunching", False)]
+        if "is_bunching" in df_hw.columns
+        else pd.DataFrame()
+    )
     if not bunching.empty:
         st.markdown("**Routes currently bunching:**")
-        show_cols = [c for c in ["route_id", "direction_id", "headway_cv",
-                                  "headway_mean_s", "trip_count", "window_start"]
-                     if c in bunching.columns]
+        show_cols = [
+            c
+            for c in [
+                "route_id",
+                "direction_id",
+                "headway_cv",
+                "headway_mean_s",
+                "trip_count",
+                "window_start",
+            ]
+            if c in bunching.columns
+        ]
         st.dataframe(
             bunching[show_cols].sort_values("headway_cv", ascending=False).head(20),
-            use_container_width=True, hide_index=True,
+            use_container_width=True,
+            hide_index=True,
         )
     else:
         st.success("No bunching detected in the last 5 minutes.")

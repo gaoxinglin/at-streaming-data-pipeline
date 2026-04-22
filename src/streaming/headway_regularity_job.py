@@ -11,18 +11,31 @@ import os
 from dotenv import load_dotenv
 from src.streaming import kafka_utils
 from src.streaming.detection.headway import (
-    compute_headway_regularity, WINDOW_DURATION, SLIDE_INTERVAL, WATERMARK_DELAY,
+    compute_headway_regularity,
+    WINDOW_DURATION,
+    SLIDE_INTERVAL,
+    WATERMARK_DELAY,
 )
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.functions import (
-    col, current_timestamp, expr, from_unixtime, lit, struct, to_date, to_json, when,
+    col,
+    current_timestamp,
+    expr,
+    from_unixtime,
+    lit,
+    struct,
+    to_date,
+    to_json,
+    when,
 )
 
 
 def format_for_kafka(df: DataFrame) -> DataFrame:
     return df.select(
-        expr("concat(route_id, ':', cast(direction_id as string))").cast("string").alias("key"),
+        expr("concat(route_id, ':', cast(direction_id as string))")
+        .cast("string")
+        .alias("key"),
         to_json(struct("*")).alias("value"),
     )
 
@@ -31,7 +44,9 @@ def start(spark: SparkSession) -> list:
     KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
     STARTING_OFFSETS = os.getenv("KAFKA_STARTING_OFFSETS", "latest")
-    MAX_OFFSETS_PER_TRIGGER = int(os.getenv("TRIP_UPDATES_MAX_OFFSETS_PER_TRIGGER", "2000"))
+    MAX_OFFSETS_PER_TRIGGER = int(
+        os.getenv("TRIP_UPDATES_MAX_OFFSETS_PER_TRIGGER", "2000")
+    )
     CHECKPOINT_BASE = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints")
     OUTPUT_PATH = os.getenv("OUTPUT_PATH", "/tmp/bronze")
     OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "delta")
@@ -78,39 +93,42 @@ def start(spark: SparkSession) -> list:
             return
         batch_df.persist()
         try:
-            format_for_kafka(batch_df).write \
-                .format("kafka") \
-                .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP)) \
-                .option("topic", kafka_utils.topic_name(SINK_TOPIC)) \
-                .save()
+            format_for_kafka(batch_df).write.format("kafka").options(
+                **kafka_utils.kafka_options(KAFKA_BOOTSTRAP)
+            ).option("topic", kafka_utils.topic_name(SINK_TOPIC)).save()
 
-            batch_df.withColumn("event_date", to_date(col("window_start"))) \
-                .write.format(OUTPUT_FORMAT).mode("append") \
-                .partitionBy("event_date") \
-                .save(f"{OUTPUT_PATH}/headway_metrics")
+            batch_df.withColumn(
+                "event_date", to_date(col("window_start"))
+            ).write.format(OUTPUT_FORMAT).mode("append").partitionBy("event_date").save(
+                f"{OUTPUT_PATH}/headway_metrics"
+            )
 
             bunching = batch_df.filter(col("is_bunching") == lit(True))
             if not bunching.isEmpty():
                 bunching.select(
                     col("route_id").cast("string").alias("key"),
-                    to_json(struct(
-                        lit("bunching_alert").alias("alert_type"),
-                        col("route_id"), col("direction_id"),
-                        col("headway_cv"), col("trip_count"),
-                        col("window_start"), col("window_end"),
-                        current_timestamp().alias("detected_at"),
-                    )).alias("value"),
-                ).write \
-                    .format("kafka") \
-                    .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP)) \
-                    .option("topic", kafka_utils.topic_name(ALERTS_TOPIC)) \
-                    .save()
+                    to_json(
+                        struct(
+                            lit("bunching_alert").alias("alert_type"),
+                            col("route_id"),
+                            col("direction_id"),
+                            col("headway_cv"),
+                            col("trip_count"),
+                            col("window_start"),
+                            col("window_end"),
+                            current_timestamp().alias("detected_at"),
+                        )
+                    ).alias("value"),
+                ).write.format("kafka").options(
+                    **kafka_utils.kafka_options(KAFKA_BOOTSTRAP)
+                ).option(
+                    "topic", kafka_utils.topic_name(ALERTS_TOPIC)
+                ).save()
         finally:
             batch_df.unpersist()
 
     query = (
-        headway_metrics.writeStream
-        .outputMode("update")
+        headway_metrics.writeStream.outputMode("update")
         .foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/headway_metrics")
         .trigger(processingTime="30 seconds")
@@ -118,8 +136,10 @@ def start(spark: SparkSession) -> list:
         .start()
     )
 
-    print(f"Headway regularity job started — "
-          f"window={WINDOW_DURATION}, slide={SLIDE_INTERVAL}, watermark={WATERMARK_DELAY}")
+    print(
+        f"Headway regularity job started — "
+        f"window={WINDOW_DURATION}, slide={SLIDE_INTERVAL}, watermark={WATERMARK_DELAY}"
+    )
     return [query]
 
 
@@ -127,15 +147,20 @@ if __name__ == "__main__":
     load_dotenv()
 
     spark = (
-        SparkSession.builder
-        .appName("headway_regularity")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
-                "org.apache.spark:spark-avro_2.12:3.4.1")
-        .config("spark.sql.shuffle.partitions", os.getenv("SPARK_SQL_SHUFFLE_PARTITIONS", "4"))
+        SparkSession.builder.appName("headway_regularity")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
+            "org.apache.spark:spark-avro_2.12:3.4.1",
+        )
+        .config(
+            "spark.sql.shuffle.partitions",
+            os.getenv("SPARK_SQL_SHUFFLE_PARTITIONS", "4"),
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, *start(spark), job_label="headway_regularity")

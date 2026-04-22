@@ -2,7 +2,14 @@
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
-    array_sort, col, collect_list, expr, lit, size, when, window,
+    array_sort,
+    col,
+    collect_list,
+    expr,
+    lit,
+    size,
+    when,
+    window,
 )
 
 WINDOW_DURATION = "10 minutes"
@@ -40,21 +47,21 @@ def compute_headway_regularity(df: DataFrame) -> DataFrame:
     )
 
     grouped = (
-        enriched
-        .groupBy(
+        enriched.groupBy(
             window(col("event_ts"), WINDOW_DURATION, SLIDE_INTERVAL),
             "route_id",
             "direction_id",
         )
         .agg(
-            array_sort(collect_list(col("actual_departure_s"))).alias("sorted_departures"),
+            array_sort(collect_list(col("actual_departure_s"))).alias(
+                "sorted_departures"
+            ),
         )
         .withColumn("trip_count", size(col("sorted_departures")))
     )
 
     with_headways = (
-        grouped
-        .withColumn(
+        grouped.withColumn(
             "headways",
             expr(
                 "case when size(sorted_departures) >= 2 then "
@@ -83,23 +90,28 @@ def compute_headway_regularity(df: DataFrame) -> DataFrame:
         )
         .withColumn(
             "headway_cv_raw",
-            when(col("headway_mean_s") > 0, col("headway_stddev_s") / col("headway_mean_s")),
+            when(
+                col("headway_mean_s") > 0,
+                col("headway_stddev_s") / col("headway_mean_s"),
+            ),
         )
     )
 
-    return (
-        with_headways
-        .select(
-            col("window.start").alias("window_start"),
-            col("window.end").alias("window_end"),
-            "route_id",
-            "direction_id",
-            "trip_count",
-            "headway_mean_s",
-            "headway_stddev_s",
-            when(col("trip_count") >= 3, col("headway_cv_raw")).otherwise(lit(None)).alias("headway_cv"),
-            when((col("trip_count") >= 3) & (col("headway_cv_raw") > BUNCHING_CV_THRESHOLD), lit(True))
-            .otherwise(lit(False))
-            .alias("is_bunching"),
+    return with_headways.select(
+        col("window.start").alias("window_start"),
+        col("window.end").alias("window_end"),
+        "route_id",
+        "direction_id",
+        "trip_count",
+        "headway_mean_s",
+        "headway_stddev_s",
+        when(col("trip_count") >= 3, col("headway_cv_raw"))
+        .otherwise(lit(None))
+        .alias("headway_cv"),
+        when(
+            (col("trip_count") >= 3) & (col("headway_cv_raw") > BUNCHING_CV_THRESHOLD),
+            lit(True),
         )
+        .otherwise(lit(False))
+        .alias("is_bunching"),
     )

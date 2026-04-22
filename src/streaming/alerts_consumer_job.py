@@ -44,23 +44,17 @@ def _normalize(df: DataFrame) -> DataFrame:
         .when(col("_q2_id").isNotNull(), col("_q2_id"))
         .otherwise(expr("uuid()"))
         .alias("alert_id"),
-
         when(col("_q1_id").isNotNull(), lit("DELAY"))
         .when(col("_q2_id").isNotNull(), lit("STALL"))
         .otherwise(lit("BUNCHING"))
         .alias("alert_type"),
-
         "route_id",
         "vehicle_id",
         "trip_id",
-
-        when(col("_q1_id").isNotNull(),
-             col("_ts_q1").cast("long").cast("timestamp"))
-        .when(col("_q2_id").isNotNull(),
-             col("_ts_q2").cast("long").cast("timestamp"))
+        when(col("_q1_id").isNotNull(), col("_ts_q1").cast("long").cast("timestamp"))
+        .when(col("_q2_id").isNotNull(), col("_ts_q2").cast("long").cast("timestamp"))
         .otherwise(col("_ts_q3").cast("timestamp"))
         .alias("event_ts"),
-
         col("_detected_at").cast("timestamp").alias("detected_at"),
         col("j").alias("payload"),
         current_timestamp().alias("ingested_at"),
@@ -96,6 +90,7 @@ def start(spark: SparkSession) -> list:
         try:
             if OUTPUT_FORMAT == "delta":
                 from delta.tables import DeltaTable
+
                 if DeltaTable.isDeltaTable(spark, alerts_path):
                     # MERGE deduplicates on alert_id — safe for at-least-once delivery
                     DeltaTable.forPath(spark, alerts_path).alias("t").merge(
@@ -103,17 +98,18 @@ def start(spark: SparkSession) -> list:
                         "t.alert_id = s.alert_id",
                     ).whenNotMatchedInsertAll().execute()
                 else:
-                    batch_df.write.format("delta") \
-                        .partitionBy("event_date").save(alerts_path)
+                    batch_df.write.format("delta").partitionBy("event_date").save(
+                        alerts_path
+                    )
             else:
-                batch_df.write.format(OUTPUT_FORMAT).mode("append") \
-                    .partitionBy("event_date").save(alerts_path)
+                batch_df.write.format(OUTPUT_FORMAT).mode("append").partitionBy(
+                    "event_date"
+                ).save(alerts_path)
         finally:
             batch_df.unpersist()
 
     query = (
-        normalised.writeStream
-        .foreachBatch(write_batch)
+        normalised.writeStream.foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/alerts_consumer")
         .outputMode("append")
         .trigger(processingTime="30 seconds")
@@ -128,14 +124,16 @@ def start(spark: SparkSession) -> list:
 if __name__ == "__main__":
     load_dotenv()
     spark = (
-        SparkSession.builder
-        .appName("alerts_consumer")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
-                "io.delta:delta-spark_2.12:3.0.0")
+        SparkSession.builder.appName("alerts_consumer")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
+            "io.delta:delta-spark_2.12:3.0.0",
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, *start(spark), job_label="alerts_consumer")

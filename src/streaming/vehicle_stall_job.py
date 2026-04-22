@@ -10,12 +10,23 @@ import os
 from dotenv import load_dotenv
 from src.streaming import kafka_utils
 from src.streaming.detection.stall import (
-    detect_stalls, STALL_RADIUS_M, STALL_THRESHOLD,
-    STALL_EVENT_SCHEMA, STATE_SCHEMA,
+    detect_stalls,
+    STALL_RADIUS_M,
+    STALL_THRESHOLD,
+    STALL_EVENT_SCHEMA,
+    STATE_SCHEMA,
 )
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.avro.functions import from_avro
-from pyspark.sql.functions import col, current_timestamp, expr, from_unixtime, struct, to_date, to_json
+from pyspark.sql.functions import (
+    col,
+    current_timestamp,
+    expr,
+    from_unixtime,
+    struct,
+    to_date,
+    to_json,
+)
 from pyspark.sql.streaming.state import GroupStateTimeout
 from pyspark.sql.types import DoubleType, LongType, StringType, StructField, StructType
 
@@ -31,7 +42,9 @@ def start(spark: SparkSession) -> list:
     KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://localhost:8081")
     STARTING_OFFSETS = os.getenv("KAFKA_STARTING_OFFSETS", "latest")
-    MAX_OFFSETS_PER_TRIGGER = int(os.getenv("VEHICLE_POSITIONS_MAX_OFFSETS_PER_TRIGGER", "4000"))
+    MAX_OFFSETS_PER_TRIGGER = int(
+        os.getenv("VEHICLE_POSITIONS_MAX_OFFSETS_PER_TRIGGER", "4000")
+    )
     CHECKPOINT_BASE = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints")
     OUTPUT_PATH = os.getenv("OUTPUT_PATH", "/tmp/bronze")
     OUTPUT_FORMAT = os.getenv("OUTPUT_FORMAT", "delta")
@@ -66,15 +79,17 @@ def start(spark: SparkSession) -> list:
         col("data.current_status").alias("current_status"),
     )
 
-    input_schema = StructType([
-        StructField("vehicle_id", StringType()),
-        StructField("route_id", StringType()),
-        StructField("trip_id", StringType()),
-        StructField("latitude", DoubleType()),
-        StructField("longitude", DoubleType()),
-        StructField("timestamp", LongType()),
-        StructField("current_status", StringType()),
-    ])
+    input_schema = StructType(
+        [
+            StructField("vehicle_id", StringType()),
+            StructField("route_id", StringType()),
+            StructField("trip_id", StringType()),
+            StructField("latitude", DoubleType()),
+            StructField("longitude", DoubleType()),
+            StructField("timestamp", LongType()),
+            StructField("current_status", StringType()),
+        ]
+    )
 
     stall_events = flat.groupBy("vehicle_id").applyInPandasWithState(
         detect_stalls,
@@ -89,24 +104,20 @@ def start(spark: SparkSession) -> list:
             return
         batch_df.persist()
         try:
-            format_for_kafka(batch_df).write \
-                .format("kafka") \
-                .options(**kafka_utils.kafka_options(KAFKA_BOOTSTRAP)) \
-                .option("topic", kafka_utils.topic_name(SINK_TOPIC)) \
-                .save()
+            format_for_kafka(batch_df).write.format("kafka").options(
+                **kafka_utils.kafka_options(KAFKA_BOOTSTRAP)
+            ).option("topic", kafka_utils.topic_name(SINK_TOPIC)).save()
 
-            batch_df \
-                .withColumn("detected_at", current_timestamp()) \
-                .withColumn("event_date", to_date(from_unixtime(col("stall_detected_ts")))) \
-                .write.format(OUTPUT_FORMAT).mode("append") \
-                .partitionBy("event_date") \
-                .save(f"{OUTPUT_PATH}/stall_events")
+            batch_df.withColumn("detected_at", current_timestamp()).withColumn(
+                "event_date", to_date(from_unixtime(col("stall_detected_ts")))
+            ).write.format(OUTPUT_FORMAT).mode("append").partitionBy("event_date").save(
+                f"{OUTPUT_PATH}/stall_events"
+            )
         finally:
             batch_df.unpersist()
 
     query = (
-        stall_events.writeStream
-        .foreachBatch(write_batch)
+        stall_events.writeStream.foreachBatch(write_batch)
         .option("checkpointLocation", f"{CHECKPOINT_BASE}/vehicle_stalls")
         .outputMode("update")
         .trigger(processingTime="30 seconds")
@@ -114,8 +125,10 @@ def start(spark: SparkSession) -> list:
         .start()
     )
 
-    print(f"Vehicle stall detection started — "
-          f"radius={STALL_RADIUS_M}m, threshold={STALL_THRESHOLD} readings")
+    print(
+        f"Vehicle stall detection started — "
+        f"radius={STALL_RADIUS_M}m, threshold={STALL_THRESHOLD} readings"
+    )
     return [query]
 
 
@@ -123,14 +136,16 @@ if __name__ == "__main__":
     load_dotenv()
 
     spark = (
-        SparkSession.builder
-        .appName("vehicle_stall_detection")
-        .config("spark.jars.packages",
-                "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
-                "org.apache.spark:spark-avro_2.12:3.4.1")
+        SparkSession.builder.appName("vehicle_stall_detection")
+        .config(
+            "spark.jars.packages",
+            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.1,"
+            "org.apache.spark:spark-avro_2.12:3.4.1",
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
 
     from src.streaming._shutdown import run_until_shutdown
+
     run_until_shutdown(spark, *start(spark), job_label="vehicle_stalls")

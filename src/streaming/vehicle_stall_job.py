@@ -28,7 +28,6 @@ from pyspark.sql.functions import (
     to_json,
 )
 from pyspark.sql.streaming.state import GroupStateTimeout
-from pyspark.sql.types import DoubleType, LongType, StringType, StructField, StructType
 
 
 def format_for_kafka(df: DataFrame) -> DataFrame:
@@ -77,18 +76,6 @@ def start(spark: SparkSession) -> list:
         col("data.longitude").alias("longitude"),
         col("data.timestamp").alias("timestamp"),
         col("data.current_status").alias("current_status"),
-    )
-
-    input_schema = StructType(
-        [
-            StructField("vehicle_id", StringType()),
-            StructField("route_id", StringType()),
-            StructField("trip_id", StringType()),
-            StructField("latitude", DoubleType()),
-            StructField("longitude", DoubleType()),
-            StructField("timestamp", LongType()),
-            StructField("current_status", StringType()),
-        ]
     )
 
     stall_events = flat.groupBy("vehicle_id").applyInPandasWithState(

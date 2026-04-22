@@ -1,6 +1,5 @@
 """Unit tests for Q1 delay alert detection logic."""
 
-import pytest
 from pyspark.sql.types import (
     BooleanType,
     IntegerType,
@@ -10,7 +9,7 @@ from pyspark.sql.types import (
     StructType,
 )
 
-from src.streaming.detection.delay import detect_delays, DELAY_THRESHOLD
+from src.streaming.detection.delay import detect_delays
 
 
 def _tu_schema():

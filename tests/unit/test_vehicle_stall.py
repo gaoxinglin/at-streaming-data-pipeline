@@ -1,6 +1,5 @@
 """Unit tests for Q2 vehicle stall detection."""
 
-import pytest
 import pandas as pd
 from unittest.mock import MagicMock
 
@@ -8,9 +7,7 @@ from src.streaming.detection.stall import (
     haversine_m,
     detect_stalls,
     STALL_EVENT_SCHEMA,
-    STALL_THRESHOLD,
     STALL_RADIUS_M,
-    STALL_MIN_SPAN_S,
 )
 
 

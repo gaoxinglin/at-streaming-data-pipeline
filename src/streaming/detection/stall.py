@@ -14,7 +14,7 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
-from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
+from pyspark.sql.streaming.state import GroupState
 
 STALL_THRESHOLD = 3  # consecutive readings within radius
 STALL_RADIUS_M = 15.0  # metres (PRD: urban GPS CEP ≤ 15 m)

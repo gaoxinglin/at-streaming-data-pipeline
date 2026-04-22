@@ -1,6 +1,5 @@
 import os
 
-import requests
 from dotenv import load_dotenv
 from src.streaming import kafka_utils
 from pyspark.sql import SparkSession, DataFrame

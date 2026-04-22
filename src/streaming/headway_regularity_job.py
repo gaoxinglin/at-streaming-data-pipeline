@@ -27,7 +27,6 @@ from pyspark.sql.functions import (
     struct,
     to_date,
     to_json,
-    when,
 )
 
 

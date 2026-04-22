@@ -28,9 +28,10 @@ except NameError:
 try:
     from dotenv import load_dotenv
 except ImportError:
-    load_dotenv = (
-        lambda: None
-    )  # noqa: E731 — dotenv not installed on Databricks cluster
+
+    def load_dotenv():  # dotenv not installed on Databricks cluster
+        pass
+
 
 from pyspark.sql import SparkSession
 

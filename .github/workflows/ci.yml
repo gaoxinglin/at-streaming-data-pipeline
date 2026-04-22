@@ -27,6 +27,9 @@ jobs:
       - name: Lint SQL
         run: uv run sqlfluff lint transform/models/
 
+      - name: dbt deps
+        run: uv run dbt deps --project-dir transform --profiles-dir transform
+
       - name: dbt compile (dev)
         run: uv run dbt compile --project-dir transform --profiles-dir transform --target dev
 
@@ -37,6 +40,7 @@ jobs:
           DATABRICKS_TOKEN: "placeholder"
         run: |
           pip install --quiet "dbt-databricks>=1.9.0,<2.0.0"
+          dbt deps --project-dir transform --profiles-dir transform
           dbt compile --project-dir transform --profiles-dir transform --target prod
 
       - name: Unit tests

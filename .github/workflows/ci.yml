@@ -31,7 +31,9 @@ jobs:
         run: uv run dbt deps --project-dir transform --profiles-dir transform
 
       - name: dbt compile (dev)
-        run: uv run dbt compile --project-dir transform --profiles-dir transform --target dev
+        run: |
+          mkdir -p target
+          uv run dbt compile --project-dir transform --profiles-dir transform --target dev
 
       - name: dbt compile (prod)
         env:

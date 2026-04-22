@@ -17,34 +17,34 @@ seeds:
     +schema: gtfs_static
     gtfs_routes:
       +column_types:
-        route_id: varchar
-        agency_id: varchar
-        route_short_name: varchar
-        route_long_name: varchar
-        route_desc: varchar
+        route_id: string
+        agency_id: string
+        route_short_name: string
+        route_long_name: string
+        route_desc: string
         route_type: integer
-        route_url: varchar
-        route_color: varchar
-        route_text_color: varchar
-        route_sort_order: varchar
-        contract_id: varchar
+        route_url: string
+        route_color: string
+        route_text_color: string
+        route_sort_order: string
+        contract_id: string
     gtfs_stops:
       +column_types:
-        stop_id: varchar
-        stop_code: varchar
-        stop_name: varchar
-        stop_desc: varchar
+        stop_id: string
+        stop_code: string
+        stop_name: string
+        stop_desc: string
         stop_lat: double
         stop_lon: double
-        zone_id: varchar
-        stop_url: varchar
+        zone_id: string
+        stop_url: string
         location_type: integer
-        parent_station: varchar
-        stop_timezone: varchar
-        platform_code: varchar
+        parent_station: string
+        stop_timezone: string
+        platform_code: string
         wheelchair_boarding: integer
-        start_date: varchar
-        end_date: varchar
+        start_date: string
+        end_date: string
 
 models:
   at_streaming:

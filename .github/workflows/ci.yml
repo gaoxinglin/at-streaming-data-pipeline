@@ -72,8 +72,12 @@ jobs:
     steps:
       - name: Sync Databricks Repo
         run: |
-          curl -sf -X PATCH \
+          response=$(curl -s -w "\n%{http_code}" -X PATCH \
             "https://adb-7405606237770298.18.azuredatabricks.net/api/2.0/repos/1166807278124877" \
             -H "Authorization: Bearer ${{ secrets.DATABRICKS_TOKEN }}" \
             -H "Content-Type: application/json" \
-            -d '{"branch": "main"}'
+            -d '{"branch": "main"}')
+          http_code=$(echo "$response" | tail -1)
+          body=$(echo "$response" | head -1)
+          echo "HTTP $http_code: $body"
+          [ "$http_code" -eq 200 ] || exit 1

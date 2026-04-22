@@ -1,9 +1,15 @@
 [sqlfluff]
 templater = jinja
 dialect = sparksql
+max_line_length = 120
+exclude_rules = AL01, RF02, ST06, ST07
 
 [sqlfluff:templater:jinja]
 apply_dbt_builtins = true
+
+[sqlfluff:templater:jinja:macros]
+read_bronze = {% macro read_bronze(table_name) %}{{ table_name }}{% endmacro %}
+read_gtfs = {% macro read_gtfs(table_name) %}{{ table_name }}{% endmacro %}
 
 [sqlfluff:indentation]
 indent_unit = space

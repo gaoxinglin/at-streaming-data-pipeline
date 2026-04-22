@@ -1,20 +1,21 @@
 -- Clean GTFS static stops. Validates coordinates are within NZ bounding box.
 
-with source as (
-    select * from {{ read_gtfs('stops') }}
+WITH source AS (
+    SELECT * FROM {{ read_gtfs('stops') }}
 ),
 
-cleaned as (
-    select
+cleaned AS (
+    SELECT
         stop_id,
         stop_name,
         stop_lat,
         stop_lon,
         stop_code
-    from source
-    where stop_id is not null
-      and stop_lat between -48 and -34  -- NZ latitude range
-      and stop_lon between 166 and 179  -- NZ longitude range
+    FROM source
+    WHERE
+        stop_id IS NOT null
+        AND stop_lat BETWEEN -48 AND -34  -- NZ latitude range
+        AND stop_lon BETWEEN 166 AND 179  -- NZ longitude range
 )
 
-select * from cleaned
+SELECT * FROM cleaned

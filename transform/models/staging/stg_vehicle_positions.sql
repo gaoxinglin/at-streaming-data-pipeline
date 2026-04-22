@@ -1,28 +1,29 @@
 -- Clean vehicle GPS pings from Bronze.
 -- Drops debug columns (_raw_payload), validates coordinates, renames speed.
 
-with source as (
-    select * from {{ read_bronze('vehicle_positions') }}
+WITH source AS (
+    SELECT * FROM {{ read_bronze('vehicle_positions') }}
 ),
 
-cleaned as (
-    select
+cleaned AS (
+    SELECT
         event_id,
         vehicle_id,
         trip_id,
         route_id,
         latitude,
         longitude,
-        speed as speed_kmh,
+        speed AS speed_kmh,
         current_stop_sequence,
         stop_id,
         current_status,
         event_ts,
-        cast(event_ts as date) as event_date,
-        extract(hour from event_ts) as event_hour
-    from source
-    where latitude between -90 and 90
-      and longitude between -180 and 180
+        cast(event_ts AS date) AS event_date,
+        extract(HOUR FROM event_ts) AS event_hour
+    FROM source
+    WHERE
+        latitude BETWEEN -90 AND 90
+        AND longitude BETWEEN -180 AND 180
 )
 
-select * from cleaned
+SELECT * FROM cleaned

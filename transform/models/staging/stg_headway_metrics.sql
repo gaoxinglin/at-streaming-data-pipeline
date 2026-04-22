@@ -1,12 +1,12 @@
 -- Clean headway regularity metrics from Spark Q3 output.
 -- Passes through window-level aggregates, adds event_date/hour.
 
-with source as (
-    select * from {{ read_bronze('headway_metrics') }}
+WITH source AS (
+    SELECT * FROM {{ read_bronze('headway_metrics') }}
 ),
 
-cleaned as (
-    select
+cleaned AS (
+    SELECT
         route_id,
         direction_id,
         window_start,
@@ -16,10 +16,10 @@ cleaned as (
         headway_stddev_s,
         headway_cv,
         is_bunching,
-        cast(window_start as date) as event_date,
-        extract(hour from window_start) as event_hour
-    from source
-    where trip_count > 0
+        cast(window_start AS date) AS event_date,
+        extract(HOUR FROM window_start) AS event_hour
+    FROM source
+    WHERE trip_count > 0
 )
 
-select * from cleaned
+SELECT * FROM cleaned

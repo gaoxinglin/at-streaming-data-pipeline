@@ -35,7 +35,7 @@ jobs:
           mkdir -p target
           uv run dbt compile --project-dir transform --profiles-dir transform --target dev
 
-      - name: dbt compile (prod)
+      - name: dbt parse (prod)
         env:
           DATABRICKS_HOST: "https://placeholder.azuredatabricks.net"
           DATABRICKS_HTTP_PATH: "/sql/1.0/warehouses/placeholder"
@@ -43,7 +43,7 @@ jobs:
         run: |
           pip install --quiet "dbt-databricks>=1.9.0,<2.0.0"
           dbt deps --project-dir transform --profiles-dir transform
-          dbt compile --project-dir transform --profiles-dir transform --target prod
+          dbt parse --project-dir transform --profiles-dir transform --target prod
 
       - name: Unit tests
         run: uv run pytest tests/unit/ -q

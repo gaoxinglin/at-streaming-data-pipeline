@@ -1,98 +1,80 @@
-# Azure deployment — Phase 1 (collect-first stack)
+# Azure deployment
 
-Provisions just enough Azure to start collecting AT real-time data into the cloud
-cheaply. **No Databricks yet** — we let Event Hubs Capture land everything in ADLS
-as Avro for as long as you want, then add compute later in Phase 2.
+Provisions the full AT streaming data pipeline stack on Azure.
 
 ## What this creates
 
-- Resource group `rg-atpipe-dev`
-- ADLS Gen2 storage account with containers: `capture`, `bronze`, `silver`, `gold`, `checkpoints`
-- Event Hubs namespace (Standard, 1 TU, Kafka-enabled) + topics: `vehicle_positions`, `trip_updates`, `service_alerts`, `at_alerts`
-- **Event Hubs Capture** writing every 5 min from each topic into `capture/` as Avro
-- Key Vault with the producer's connection string (and optionally your AT API key)
-- Monthly Cost Management budget ($50 NZD by default) with alerts at 80% forecast and 100% actual, sent to `owner`
+**`rg-atpipe-dev`**
+- ADLS Gen2 storage account — containers: `capture`, `bronze`, `silver`, `gold`, `checkpoints`
+- Event Hubs namespace (Standard, 1 TU, Kafka-enabled) + topics: `vehicle_positions`, `trip_updates`, `service_alerts`, `alerts`, `headway_metrics`
+- Azure Container Registry (Basic) — hosts the `at-producer` Docker image
+- ACI producer — 0.25 vCPU container that polls AT API and publishes to Event Hubs
+- Key Vault — Event Hubs connection string, AT API key, Databricks SP credentials
+- Databricks workspace (Premium)
+- Monthly budget alert ($300 USD default) at 80% forecast and 100% actual
 
-Steady-state cost is roughly **$1/day** — most of it the 1 throughput unit on EH.
+**`rg-atpipe-dev-managed`** (auto-managed by Databricks)
+- VNet with public/private subnets — VNet injection means no NAT gateway, saving ~$32/month vs default Databricks networking
 
 ## Prerequisites
 
 ```bash
 brew install azure-cli terraform
 az login
-az account show   # confirm the right subscription is default
+az account show   # confirm the right subscription is active
 ```
 
-## Apply
+## Apply (two-pass required)
+
+Databricks workspace-level resources (clusters, jobs, secret scope) need the workspace URL to exist first.
 
 ```bash
 cd deploy/terraform
-cp terraform.tfvars.example terraform.tfvars
-$EDITOR terraform.tfvars     # at minimum: set `owner`
-
+cp terraform.tfvars.example terraform.tfvars   # set owner, at_api_key, github_pat
 terraform init
-terraform plan
+
+# Pass 1: create workspace + networking (~10 min)
+terraform apply -target=azurerm_databricks_workspace.main \
+                -target=azurerm_virtual_network.databricks \
+                -target=azurerm_network_security_group.databricks \
+                -target=azurerm_subnet.databricks_public \
+                -target=azurerm_subnet.databricks_private \
+                -target=azurerm_subnet_network_security_group_association.databricks_public \
+                -target=azurerm_subnet_network_security_group_association.databricks_private
+
+# Pass 2: everything else (~5 min)
 terraform apply
 ```
 
-Apply takes ~3–5 min. Resource names get a 5-char random suffix because storage
-account / Key Vault / EH namespace names must be globally unique.
+## Push the producer image
 
-## Wire the local producer to Azure
-
-After apply:
+ACI needs the image in ACR before it can start. Run once after ACR is created:
 
 ```bash
-KV=$(terraform output -raw key_vault_name)
-EH_BOOTSTRAP=$(terraform output -raw eventhubs_kafka_bootstrap)
-EH_CONN=$(az keyvault secret show --vault-name "$KV" --name eventhubs-connection-string --query value -o tsv)
-
-# update the repo .env
-echo "KAFKA_BOOTSTRAP_SERVERS=$EH_BOOTSTRAP" >> ../../.env
-echo "EVENTHUBS_CONNECTION_STRING=$EH_CONN" >> ../../.env
+ACR=$(terraform output -raw acr_login_server | cut -d. -f1)
+az acr build --registry "$ACR" --image at-producer:latest \
+  -f src/producer/Dockerfile src/producer/
 ```
 
-The producer also needs SASL_SSL config to actually talk to Event Hubs.
-That code change is **not in this branch** — it belongs in a follow-up. The
-gist of it (for `confluent-kafka-python`):
+## Estimated cost (dev, idle)
 
-```python
-conf = {
-    "bootstrap.servers": os.environ["KAFKA_BOOTSTRAP_SERVERS"],
-    "security.protocol": "SASL_SSL",
-    "sasl.mechanism": "PLAIN",
-    "sasl.username": "$ConnectionString",
-    "sasl.password": os.environ["EVENTHUBS_CONNECTION_STRING"],
-}
-```
+| Resource | ~AUD/month |
+|----------|-----------|
+| Databricks workspace (no running cluster) | ~$5 |
+| Event Hubs (1 TU) | ~$13 |
+| ACR Basic | ~$6 |
+| ACI producer (0.25 vCPU, always-on) | ~$3 |
+| Storage + Key Vault | ~$2 |
+| **Total idle** | **~$29** |
 
-Gate it on `EVENTHUBS_CONNECTION_STRING` being set so local Redpanda dev still works.
+Databricks cluster compute (D4s_v3 spot) adds ~$2–4/hour when running.
 
-## Verify capture is working
+## Tear down / restore cycle
 
-After ~5 min of producer running:
+To pause and save costs, delete from the Azure portal:
+- `aci-atpipe-dev-producer` (Container instances)
+- `evhns-atpipe-dev-*` (Event Hubs Namespace)
+- `acratpipedev*` (Container registry)
+- Databricks workspace (triggers auto-cleanup of managed RG including networking)
 
-```bash
-SA=$(terraform output -raw storage_account_name)
-az storage blob list \
-  --account-name "$SA" \
-  --container-name capture \
-  --auth-mode login \
-  --query "[].name" -o tsv | head
-```
-
-You should see files under `<namespace>/<topic>/<partition>/<yyyy>/<mm>/<dd>/<hh>/<mm>/<ss>.avro`.
-
-If not after 10 min: check the namespace's Capture diagnostics in the portal —
-9 times out of 10 it's the role assignment to the storage account not having
-propagated. Wait 5 min and try again, or `terraform apply` once more.
-
-## Tear down
-
-```bash
-terraform destroy
-```
-
-Soft-delete is on for storage and Key Vault (7 days). If you want the names
-back immediately, purge them from the portal — otherwise just pick fresh names
-on the next deploy (the random suffix already handles that).
+To restore, run the two-pass apply above.

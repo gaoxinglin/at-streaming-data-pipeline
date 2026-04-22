@@ -20,9 +20,9 @@ dbt_bin = shutil.which("dbt") or f"{sys.executable.rsplit('/', 1)[0]}/dbt"
 repo_root = Path(sys.argv[0]).resolve().parents[2]
 project_dir = repo_root / "transform"
 
-result = subprocess.run(
-    [dbt_bin, "run", "--target", "prod", "--project-dir", str(project_dir), "--profiles-dir", str(project_dir)],
-    capture_output=False,
-)
+dbt_args = ["--target", "prod", "--project-dir", str(project_dir), "--profiles-dir", str(project_dir)]
 
+subprocess.check_call([dbt_bin, "deps"] + dbt_args)
+
+result = subprocess.run([dbt_bin, "run"] + dbt_args, capture_output=False)
 sys.exit(result.returncode)

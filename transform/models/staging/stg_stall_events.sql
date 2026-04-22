@@ -17,7 +17,8 @@ cleaned AS (
         -- stall_detected_ts is a unix epoch long in Bronze
         cast(to_timestamp(stall_detected_ts) AS timestamp) AS stall_detected_at,
         -- approximate stall duration: last detection - first seen
-        unix_timestamp(cast(to_timestamp(stall_detected_ts) AS timestamp)) - unix_timestamp(first_seen) AS stall_duration_s,
+        unix_timestamp(cast(to_timestamp(stall_detected_ts) AS timestamp))
+        - unix_timestamp(first_seen) AS stall_duration_s,
         detected_at,
         event_date,
         extract(HOUR FROM first_seen) AS event_hour

@@ -3,7 +3,7 @@ name = "at-streaming-data-pipeline"
 version = "0.1.0"
 description = "Auckland Transport Real-time Streaming Pipeline"
 readme = "README.md"
-requires-python = ">=3.12.8"
+requires-python = ">=3.12.8,<3.13"
 dependencies = [
     "confluent-kafka[avro]>=2.3.0",
     "fastavro>=1.10.0",
@@ -24,6 +24,7 @@ pythonpath = ["."]
 dev = [
     "black>=24.0.0",
     "ruff>=0.3.0",
+    "sqlfluff>=3.0.0",
     "pytest>=8.0.0",
     "pytest-mock>=3.12.0",
     "testcontainers>=4.0.0",

@@ -10,8 +10,8 @@
     )
 }}
 
-with delays as (
-    select
+WITH delays AS (
+    SELECT
         event_id,
         event_date,
         event_hour,
@@ -20,14 +20,15 @@ with delays as (
         delay,
         delay_minutes,
         event_ts
-    from {{ ref('stg_trip_updates') }}
-    where delay > 300  -- 5 minutes in seconds
-    {% if is_incremental() %}
-      and event_date > (select max(event_date) from {{ this }})
-    {% endif %}
+    FROM {{ ref('stg_trip_updates') }}
+    WHERE
+        delay > 300  -- 5 minutes in seconds
+        {% if is_incremental() %}
+            AND event_date > (SELECT max(event_date) FROM {{ this }})
+        {% endif %}
 )
 
-select
+SELECT
     d.event_id,
     d.event_date,
     d.event_hour,
@@ -38,5 +39,5 @@ select
     d.delay,
     d.delay_minutes,
     d.event_ts
-from delays d
-left join {{ ref('dim_routes') }} r using (route_id)
+FROM delays d
+LEFT JOIN {{ ref('dim_routes') }} r USING (route_id)

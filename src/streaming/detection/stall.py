@@ -6,15 +6,22 @@ from typing import Iterator
 
 import pandas as pd
 from pyspark.sql.types import (
-    DoubleType, IntegerType, LongType, StringType, StructField, StructType,
+    DoubleType,
+    IntegerType,
+    LongType,
+    StringType,
+    StructField,
+    StructType,
     TimestampType,
 )
-from pyspark.sql.streaming.state import GroupState, GroupStateTimeout
+from pyspark.sql.streaming.state import GroupState
 
-STALL_THRESHOLD = 3      # consecutive readings within radius
-STALL_RADIUS_M = 15.0    # metres (PRD: urban GPS CEP ≤ 15 m)
-STALL_MIN_SPAN_S = 60    # minimum first-to-last span (PRD: prevents duplicate/jitter events)
-STALL_MAX_SPAN_S = 600   # maximum span (PRD: one full off-peak polling cycle)
+STALL_THRESHOLD = 3  # consecutive readings within radius
+STALL_RADIUS_M = 15.0  # metres (PRD: urban GPS CEP ≤ 15 m)
+STALL_MIN_SPAN_S = (
+    60  # minimum first-to-last span (PRD: prevents duplicate/jitter events)
+)
+STALL_MAX_SPAN_S = 600  # maximum span (PRD: one full off-peak polling cycle)
 STATE_TIMEOUT_MS = 20 * 60 * 1000  # 20 minutes in ms
 
 # Auckland region bounding box — discards GPS drift readings that land in water or
@@ -26,33 +33,43 @@ _AUCKLAND_LON_MAX = 175.10
 
 
 def _in_auckland(lat: float, lon: float) -> bool:
-    return _AUCKLAND_LAT_MIN <= lat <= _AUCKLAND_LAT_MAX and _AUCKLAND_LON_MIN <= lon <= _AUCKLAND_LON_MAX
+    return (
+        _AUCKLAND_LAT_MIN <= lat <= _AUCKLAND_LAT_MAX
+        and _AUCKLAND_LON_MIN <= lon <= _AUCKLAND_LON_MAX
+    )
+
 
 # schema for emitted stall events
-STALL_EVENT_SCHEMA = StructType([
-    StructField("stall_id", StringType()),
-    StructField("vehicle_id", StringType()),
-    StructField("route_id", StringType()),
-    StructField("trip_id", StringType()),
-    StructField("latitude", DoubleType()),
-    StructField("longitude", DoubleType()),
-    StructField("reading_count", IntegerType()),
-    StructField("stall_duration_s", IntegerType()),
-    StructField("first_seen", TimestampType()),
-    StructField("stall_detected_ts", LongType()),
-])
+STALL_EVENT_SCHEMA = StructType(
+    [
+        StructField("stall_id", StringType()),
+        StructField("vehicle_id", StringType()),
+        StructField("route_id", StringType()),
+        StructField("trip_id", StringType()),
+        StructField("latitude", DoubleType()),
+        StructField("longitude", DoubleType()),
+        StructField("reading_count", IntegerType()),
+        StructField("stall_duration_s", IntegerType()),
+        StructField("first_seen", TimestampType()),
+        StructField("stall_detected_ts", LongType()),
+    ]
+)
 
 # schema for per-vehicle state stored between micro-batches
-STATE_SCHEMA = StructType([
-    StructField("anchor_lat", DoubleType()),
-    StructField("anchor_lon", DoubleType()),
-    StructField("count", IntegerType()),
-    StructField("first_ts", LongType()),
-    StructField("last_route_id", StringType()),
-    StructField("last_trip_id", StringType()),
-    StructField("already_emitted", IntegerType()),  # bool as int for pandas compat
-    StructField("all_stopped_at", IntegerType()),   # 1 if every reading in window was STOPPED_AT
-])
+STATE_SCHEMA = StructType(
+    [
+        StructField("anchor_lat", DoubleType()),
+        StructField("anchor_lon", DoubleType()),
+        StructField("count", IntegerType()),
+        StructField("first_ts", LongType()),
+        StructField("last_route_id", StringType()),
+        StructField("last_trip_id", StringType()),
+        StructField("already_emitted", IntegerType()),  # bool as int for pandas compat
+        StructField(
+            "all_stopped_at", IntegerType()
+        ),  # 1 if every reading in window was STOPPED_AT
+    ]
+)
 
 
 def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -61,7 +78,10 @@ def haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     rlat1, rlat2 = math.radians(lat1), math.radians(lat2)
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat / 2) ** 2 + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(rlat1) * math.cos(rlat2) * math.sin(dlon / 2) ** 2
+    )
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
@@ -114,7 +134,9 @@ def detect_stalls(
                 # GPS drift outside service area — discard reading, don't reset state
                 continue
 
-            is_stopped = 1 if str(row.get("current_status", "") or "") == "STOPPED_AT" else 0
+            is_stopped = (
+                1 if str(row.get("current_status", "") or "") == "STOPPED_AT" else 0
+            )
 
             if count == 0:
                 anchor_lat, anchor_lon = lat, lon
@@ -164,21 +186,34 @@ def detect_stalls(
                     # or scheduled stop, not a genuine stall. Don't emit.
                     already_emitted = count
                 else:
-                    events.append({
-                        "stall_id": str(uuid.uuid4()),
-                        "vehicle_id": key[0],
-                        "route_id": last_route,
-                        "trip_id": last_trip,
-                        "latitude": anchor_lat,
-                        "longitude": anchor_lon,
-                        "reading_count": count,
-                        "stall_duration_s": span,
-                        "first_seen": pd.Timestamp(first_ts, unit="s"),
-                        "stall_detected_ts": ts,
-                    })
+                    events.append(
+                        {
+                            "stall_id": str(uuid.uuid4()),
+                            "vehicle_id": key[0],
+                            "route_id": last_route,
+                            "trip_id": last_trip,
+                            "latitude": anchor_lat,
+                            "longitude": anchor_lon,
+                            "reading_count": count,
+                            "stall_duration_s": span,
+                            "first_seen": pd.Timestamp(first_ts, unit="s"),
+                            "stall_detected_ts": ts,
+                        }
+                    )
                     already_emitted = count
 
-    state.update((anchor_lat, anchor_lon, count, first_ts, last_route, last_trip, already_emitted, all_stopped_at))
+    state.update(
+        (
+            anchor_lat,
+            anchor_lon,
+            count,
+            first_ts,
+            last_route,
+            last_trip,
+            already_emitted,
+            all_stopped_at,
+        )
+    )
     state.setTimeoutDuration(STATE_TIMEOUT_MS)
 
     if events:

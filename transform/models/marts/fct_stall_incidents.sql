@@ -9,8 +9,8 @@
     )
 }}
 
-with stalls as (
-    select
+WITH stalls AS (
+    SELECT
         stall_id,
         event_date,
         event_hour,
@@ -20,13 +20,13 @@ with stalls as (
         longitude,
         stall_duration_s,
         detected_at
-    from {{ ref('stg_stall_events') }}
+    FROM {{ ref('stg_stall_events') }}
     {% if is_incremental() %}
-    where event_date > (select max(event_date) from {{ this }})
+        WHERE event_date > (SELECT max(event_date) FROM {{ this }})
     {% endif %}
 )
 
-select
+SELECT
     s.stall_id,
     s.event_date,
     s.event_hour,
@@ -37,5 +37,5 @@ select
     s.longitude,
     s.stall_duration_s,
     s.detected_at
-from stalls s
-left join {{ ref('dim_routes') }} r using (route_id)
+FROM stalls s
+LEFT JOIN {{ ref('dim_routes') }} r USING (route_id)

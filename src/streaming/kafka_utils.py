@@ -7,6 +7,7 @@ Cloud mode is activated by setting EVENTHUBS_CONNECTION_STRING in the environmen
 - Confluent 5-byte wire-format header is absent; fastavro writes raw bytes
 - Event Hubs entity names are bare (no "at." prefix)
 """
+
 import os
 from pathlib import Path
 
@@ -54,9 +55,11 @@ def kafka_options(bootstrap: str) -> dict:
             "org.apache.kafka.common.security.plain.PlainLoginModule required "
             f'username="$ConnectionString" password="{EVENTHUBS_CONNECTION_STRING}";'
         )
-        opts.update({
-            "kafka.security.protocol": "SASL_SSL",
-            "kafka.sasl.mechanism": "PLAIN",
-            "kafka.sasl.jaas.config": jaas,
-        })
+        opts.update(
+            {
+                "kafka.security.protocol": "SASL_SSL",
+                "kafka.sasl.mechanism": "PLAIN",
+                "kafka.sasl.jaas.config": jaas,
+            }
+        )
     return opts

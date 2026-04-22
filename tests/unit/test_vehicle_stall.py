@@ -1,12 +1,13 @@
 """Unit tests for Q2 vehicle stall detection."""
 
-import pytest
 import pandas as pd
 from unittest.mock import MagicMock
 
 from src.streaming.detection.stall import (
-    haversine_m, detect_stalls, STALL_EVENT_SCHEMA, STALL_THRESHOLD,
-    STALL_RADIUS_M, STALL_MIN_SPAN_S,
+    haversine_m,
+    detect_stalls,
+    STALL_EVENT_SCHEMA,
+    STALL_RADIUS_M,
 )
 
 
@@ -42,27 +43,65 @@ def test_haversine_within_radius():
 
 def test_no_stall_below_threshold():
     """2 readings at same spot shouldn't trigger (threshold=3)."""
-    readings = _readings_iter([
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1000},
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1030},
-    ])
-    events = pd.concat(list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True)
+    readings = _readings_iter(
+        [
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1000,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1030,
+            },
+        ]
+    )
+    events = pd.concat(
+        list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True
+    )
     assert len(events) == 0
 
 
 def test_stall_at_threshold():
     """3 readings at same spot spanning exactly 60s → stall event emitted."""
-    readings = _readings_iter([
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1000},
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1030},
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1060},
-    ])
-    events = pd.concat(list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True)
+    readings = _readings_iter(
+        [
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1000,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1030,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1060,
+            },
+        ]
+    )
+    events = pd.concat(
+        list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True
+    )
     assert len(events) == 1
     assert events.iloc[0]["vehicle_id"] == "V1"
     assert events.iloc[0]["reading_count"] == 3
@@ -73,57 +112,137 @@ def test_stall_at_threshold():
 
 def test_stall_time_consistency_too_short():
     """3 readings spanning < 60s → no stall (span below minimum)."""
-    readings = _readings_iter([
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1000},
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1010},
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1020},
-    ])
-    events = pd.concat(list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True)
+    readings = _readings_iter(
+        [
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1000,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1010,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1020,
+            },
+        ]
+    )
+    events = pd.concat(
+        list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True
+    )
     assert len(events) == 0
 
 
 def test_movement_resets_count():
     """Moving >15m resets the stall counter."""
-    readings = _readings_iter([
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1000},
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1030},
-        # move ~111m north — resets
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.839, "longitude": 174.76, "timestamp": 1060},
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.839, "longitude": 174.76, "timestamp": 1090},
-    ])
-    events = pd.concat(list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True)
+    readings = _readings_iter(
+        [
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1000,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1030,
+            },
+            # move ~111m north — resets
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.839,
+                "longitude": 174.76,
+                "timestamp": 1060,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.839,
+                "longitude": 174.76,
+                "timestamp": 1090,
+            },
+        ]
+    )
+    events = pd.concat(
+        list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True
+    )
     assert len(events) == 0
 
 
 def test_trip_id_change_resets_state():
     """trip_id change mid-window resets state — no cross-trip false stall."""
-    readings = _readings_iter([
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1000},
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1030},
-        # trip changes at terminus — state resets
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T2",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1060},
-    ])
-    events = pd.concat(list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True)
+    readings = _readings_iter(
+        [
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1000,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1030,
+            },
+            # trip changes at terminus — state resets
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T2",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1060,
+            },
+        ]
+    )
+    events = pd.concat(
+        list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True
+    )
     assert len(events) == 0
 
 
 def test_stall_with_prior_state():
     """Prior state of 2 readings + 1 new reading = stall at 3."""
     prior = (-36.84, 174.76, 2, 900, "R1", "T1", 0, 0)  # 8-tuple; all_stopped_at=0
-    readings = _readings_iter([
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1000},
-    ])
+    readings = _readings_iter(
+        [
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1000,
+            },
+        ]
+    )
     events = pd.concat(
         list(detect_stalls(("V1",), readings, _make_state(exists=True, data=prior))),
         ignore_index=True,
@@ -142,15 +261,37 @@ def test_timeout_clears_state():
 
 def test_stall_event_fields():
     """Stall event has all STALL_EVENT_SCHEMA fields."""
-    readings = _readings_iter([
-        {"vehicle_id": "V1", "route_id": "NX1-203", "trip_id": "T9",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1000},
-        {"vehicle_id": "V1", "route_id": "NX1-203", "trip_id": "T9",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1030},
-        {"vehicle_id": "V1", "route_id": "NX1-203", "trip_id": "T9",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": 1060},
-    ])
-    events = pd.concat(list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True)
+    readings = _readings_iter(
+        [
+            {
+                "vehicle_id": "V1",
+                "route_id": "NX1-203",
+                "trip_id": "T9",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1000,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "NX1-203",
+                "trip_id": "T9",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1030,
+            },
+            {
+                "vehicle_id": "V1",
+                "route_id": "NX1-203",
+                "trip_id": "T9",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": 1060,
+            },
+        ]
+    )
+    events = pd.concat(
+        list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True
+    )
     assert set(events.columns) == {f.name for f in STALL_EVENT_SCHEMA.fields}
     assert events.iloc[0]["route_id"] == "NX1-203"
     assert events.iloc[0]["trip_id"] == "T9"
@@ -158,11 +299,21 @@ def test_stall_event_fields():
 
 def test_ongoing_stall_emits_updates():
     """4th and 5th readings at same spot emit additional events."""
-    readings = _readings_iter([
-        {"vehicle_id": "V1", "route_id": "R1", "trip_id": "T1",
-         "latitude": -36.84, "longitude": 174.76, "timestamp": t}
-        for t in [1000, 1030, 1060, 1090, 1120]
-    ])
-    events = pd.concat(list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True)
+    readings = _readings_iter(
+        [
+            {
+                "vehicle_id": "V1",
+                "route_id": "R1",
+                "trip_id": "T1",
+                "latitude": -36.84,
+                "longitude": 174.76,
+                "timestamp": t,
+            }
+            for t in [1000, 1030, 1060, 1090, 1120]
+        ]
+    )
+    events = pd.concat(
+        list(detect_stalls(("V1",), readings, _make_state())), ignore_index=True
+    )
     assert len(events) == 3
     assert events["reading_count"].tolist() == [3, 4, 5]

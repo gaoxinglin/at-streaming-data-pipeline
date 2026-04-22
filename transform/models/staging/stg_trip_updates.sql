@@ -1,12 +1,12 @@
 -- Clean trip delay updates from Bronze.
 -- Filters out deleted records, adds delay_minutes.
 
-with source as (
-    select * from {{ read_bronze('trip_updates') }}
+WITH source AS (
+    SELECT * FROM {{ read_bronze('trip_updates') }}
 ),
 
-cleaned as (
-    select
+cleaned AS (
+    SELECT
         event_id,
         source_id,
         trip_id,
@@ -15,12 +15,12 @@ cleaned as (
         start_time,
         start_date,
         delay,
-        round(delay / 60.0, 2) as delay_minutes,
+        round(delay / 60.0, 2) AS delay_minutes,
         event_ts,
-        cast(event_ts as date) as event_date,
-        extract(hour from event_ts) as event_hour
-    from source
-    where is_deleted = false
+        cast(event_ts AS date) AS event_date,
+        extract(HOUR FROM event_ts) AS event_hour
+    FROM source
+    WHERE is_deleted = false
 )
 
-select * from cleaned
+SELECT * FROM cleaned

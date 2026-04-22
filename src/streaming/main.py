@@ -15,7 +15,9 @@ import sys
 # directory (src/streaming/), not the repo root. Add repo root so that
 # `from src.streaming.*` imports resolve correctly.
 try:
-    _repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    _repo_root = os.path.dirname(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
     if _repo_root not in sys.path:
         sys.path.insert(0, _repo_root)
 except NameError:
@@ -26,7 +28,10 @@ except NameError:
 try:
     from dotenv import load_dotenv
 except ImportError:
-    load_dotenv = lambda: None  # noqa: E731 — dotenv not installed on Databricks cluster
+
+    def load_dotenv():  # dotenv not installed on Databricks cluster
+        pass
+
 
 from pyspark.sql import SparkSession
 
@@ -41,9 +46,11 @@ if __name__ == "__main__":
     load_dotenv()
 
     spark = (
-        SparkSession.builder
-        .appName("at_streaming_pipeline")
-        .config("spark.sql.shuffle.partitions", os.getenv("SPARK_SQL_SHUFFLE_PARTITIONS", "4"))
+        SparkSession.builder.appName("at_streaming_pipeline")
+        .config(
+            "spark.sql.shuffle.partitions",
+            os.getenv("SPARK_SQL_SHUFFLE_PARTITIONS", "4"),
+        )
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")

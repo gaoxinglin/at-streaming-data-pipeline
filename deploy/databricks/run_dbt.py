@@ -23,6 +23,7 @@ project_dir = repo_root / "transform"
 dbt_args = ["--target", "prod", "--project-dir", str(project_dir), "--profiles-dir", str(project_dir)]
 
 subprocess.check_call([dbt_bin, "deps"] + dbt_args)
+subprocess.check_call([dbt_bin, "seed"] + dbt_args)
 
 result = subprocess.run([dbt_bin, "run"] + dbt_args, capture_output=False)
 sys.exit(result.returncode)

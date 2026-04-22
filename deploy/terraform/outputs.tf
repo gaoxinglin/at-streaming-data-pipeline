@@ -42,6 +42,11 @@ output "databricks_workspace_url" {
   value       = "https://${azurerm_databricks_workspace.main.workspace_url}"
 }
 
+output "databricks_access_connector_id" {
+  description = "Access Connector resource ID — use as 'Access connector ID' when creating Unity Catalog storage credential."
+  value       = azurerm_databricks_access_connector.main.id
+}
+
 output "databricks_sp_client_id" {
   description = "Service principal client ID for Spark OAuth config."
   value       = azuread_application.databricks.client_id

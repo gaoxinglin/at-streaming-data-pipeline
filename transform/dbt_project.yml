@@ -14,6 +14,7 @@ clean-targets:
 
 seeds:
   at_streaming:
+    +schema: gtfs_static
     gtfs_routes:
       +column_types:
         route_id: varchar

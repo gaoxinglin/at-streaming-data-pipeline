@@ -10,14 +10,18 @@ runtime via pip. The install is fast (~10s) because DBR already has most deps.
 """
 import subprocess
 import sys
+from pathlib import Path
 
 subprocess.check_call([sys.executable, "-m", "pip", "install", "dbt-databricks>=1.8,<2", "-q"])
 
 import shutil
 dbt_bin = shutil.which("dbt") or f"{sys.executable.rsplit('/', 1)[0]}/dbt"
 
+repo_root = Path(__file__).resolve().parents[2]
+project_dir = repo_root / "transform"
+
 result = subprocess.run(
-    [dbt_bin, "run", "--target", "prod", "--project-dir", "transform"],
+    [dbt_bin, "run", "--target", "prod", "--project-dir", str(project_dir)],
     capture_output=False,
 )
 

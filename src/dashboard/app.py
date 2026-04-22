@@ -269,6 +269,18 @@ st.divider()
 
 st.subheader("🗺 Auckland — Vehicle Stall Density")
 
+_LAT_MIN, _LAT_MAX = -37.20, -36.50
+_LON_MIN, _LON_MAX = 174.50, 175.10
+
+
+def _valid_auckland_coord(lat, lon) -> bool:
+    try:
+        lat, lon = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return False
+    return _LAT_MIN <= lat <= _LAT_MAX and _LON_MIN <= lon <= _LON_MAX
+
+
 map_rows = [
     {
         "lat": float(m["latitude"]),
@@ -276,7 +288,7 @@ map_rows = [
         "reading_count": int(m.get("reading_count", 1)),
     }
     for m in stall_events
-    if m.get("latitude") and m.get("longitude")
+    if _valid_auckland_coord(m.get("latitude"), m.get("longitude"))
 ]
 
 if map_rows:

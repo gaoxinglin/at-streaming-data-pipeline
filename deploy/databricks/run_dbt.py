@@ -21,7 +21,7 @@ repo_root = Path(sys.argv[0]).resolve().parents[2]
 project_dir = repo_root / "transform"
 
 result = subprocess.run(
-    [dbt_bin, "run", "--target", "prod", "--project-dir", str(project_dir)],
+    [dbt_bin, "run", "--target", "prod", "--project-dir", str(project_dir), "--profiles-dir", str(project_dir)],
     capture_output=False,
 )
 

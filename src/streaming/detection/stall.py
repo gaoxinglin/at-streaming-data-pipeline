@@ -24,12 +24,13 @@ STALL_MIN_SPAN_S = (
 STALL_MAX_SPAN_S = 600  # maximum span (PRD: one full off-peak polling cycle)
 STATE_TIMEOUT_MS = 20 * 60 * 1000  # 20 minutes in ms
 
-# Auckland region bounding box — discards GPS drift readings that land in water or
-# outside the AT service area. Covers the isthmus + Waiheke + North Shore + South Auckland.
-_AUCKLAND_LAT_MIN = -37.20
-_AUCKLAND_LAT_MAX = -36.50
-_AUCKLAND_LON_MIN = 174.50
-_AUCKLAND_LON_MAX = 175.10
+# Auckland road network bounding box — tighter than the metro boundary to exclude
+# harbour and coastal water. Waitemata/Manukau harbour midpoints are deliberately
+# outside so GPS drift into open water is rejected. Waiheke excluded (no AT buses).
+_AUCKLAND_LAT_MIN = -37.05
+_AUCKLAND_LAT_MAX = -36.60
+_AUCKLAND_LON_MIN = 174.62
+_AUCKLAND_LON_MAX = 174.95
 
 
 def _in_auckland(lat: float, lon: float) -> bool:

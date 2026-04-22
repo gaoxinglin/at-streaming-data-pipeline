@@ -5,9 +5,5 @@
 #}
 
 {% macro read_gtfs(table_name) %}
-    {% if target.type == 'duckdb' %}
-        {{ ref('gtfs_' ~ table_name) }}
-    {% else %}
-        {{ source('gtfs_static', table_name) }}
-    {% endif %}
+    {{ ref('gtfs_' ~ table_name) }}
 {% endmacro %}

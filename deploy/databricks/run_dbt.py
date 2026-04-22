@@ -17,7 +17,7 @@ subprocess.check_call([sys.executable, "-m", "pip", "install", "dbt-databricks>=
 import shutil
 dbt_bin = shutil.which("dbt") or f"{sys.executable.rsplit('/', 1)[0]}/dbt"
 
-repo_root = Path(__file__).resolve().parents[2]
+repo_root = Path(sys.argv[0]).resolve().parents[2]
 project_dir = repo_root / "transform"
 
 result = subprocess.run(

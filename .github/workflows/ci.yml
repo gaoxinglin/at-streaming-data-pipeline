@@ -73,22 +73,14 @@ jobs:
       - name: Sync Databricks Repo
         env:
           DATABRICKS_HOST: "https://adb-7405617835144576.16.azuredatabricks.net"
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         run: |
-          repo_id=$(curl -sf \
-            "$DATABRICKS_HOST/api/2.0/repos" \
-            -H "Authorization: Bearer ${{ secrets.DATABRICKS_TOKEN }}" | \
-            python3 -c "
-import sys, json
-repos = json.load(sys.stdin).get('repos', [])
-match = next((r['id'] for r in repos if 'at-streaming-data-pipeline' in r.get('url', '')), None)
-if not match:
-    print('ERROR: repo not found in workspace', file=sys.stderr)
-    sys.exit(1)
-print(match)
-")
-          curl -sf -X PATCH \
-            "$DATABRICKS_HOST/api/2.0/repos/$repo_id" \
-            -H "Authorization: Bearer ${{ secrets.DATABRICKS_TOKEN }}" \
+          repo_id=$(curl -sf "$DATABRICKS_HOST/api/2.0/repos" \
+            -H "Authorization: Bearer $DATABRICKS_TOKEN" | \
+            jq -r '.repos[] | select(.url | contains("at-streaming-data-pipeline")) | .id')
+          [ -n "$repo_id" ] || { echo "ERROR: repo not found in workspace"; exit 1; }
+          curl -sf -X PATCH "$DATABRICKS_HOST/api/2.0/repos/$repo_id" \
+            -H "Authorization: Bearer $DATABRICKS_TOKEN" \
             -H "Content-Type: application/json" \
             -d '{"branch": "main"}'
           echo "Synced repo $repo_id to main"

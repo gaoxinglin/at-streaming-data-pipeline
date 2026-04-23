@@ -14,7 +14,7 @@
 
 A streaming-first data pipeline that ingests Auckland Transport GTFS-Realtime feeds, detects operational anomalies in real time using Spark Structured Streaming, and builds historical analytics with dbt on Databricks.
 
-**Why streaming?** AT's GTFS-RT feeds refresh every 30 seconds. A delay alert delivered 10 minutes late is useless to a passenger waiting at the stop; a stalled bus needs dispatch now, not in tomorrow's report. The data naturally demands streaming — this isn't batch ETL with a "streaming" label.
+**Why streaming?** AT's GTFS-RT feeds are polled every 30 s during peak hours (06:00–09:00, 15:00–18:30), 60 s during shoulder hours, and 300 s overnight — with service alerts on a fixed 300 s cycle. A delay alert delivered 10 minutes late is useless to a passenger waiting at the stop; a stalled bus needs dispatch now, not in tomorrow's report. The data naturally demands streaming — this isn't batch ETL with a "streaming" label.
 
 ## What It Detects
 
@@ -46,7 +46,7 @@ Streamlit live view monitoring Q1–Q3 outputs during local runs:
 - **Avro + Schema Registry** — contract enforcement between producer and streaming consumers. A schema-incompatible change is a build error, not a runtime surprise.
 - **Medallion architecture** — Bronze (raw), Silver (cleaned views), Gold (analytics-ready incrementals).
 - **Local/cloud parity** — local dev uses Redpanda + PySpark + Parquet + DuckDB; cloud uses Azure Event Hubs + Databricks + Delta Lake. The pipeline code is identical — only config changes via environment variables.
-- **Single streaming cluster on Databricks** — all four Structured Streaming queries run as concurrent queries in one process on one D4s_v3 node, cutting cluster cost by ~57% vs. the previous per-job-per-cluster design.
+- **Single streaming cluster on Databricks** — all four Structured Streaming queries run as concurrent queries in one process on one D4s_v3 node, cutting cluster DBU cost by ~67% vs. the previous per-job-per-cluster design (derivation below).
 
 ## Tech Stack
 
@@ -86,6 +86,16 @@ Two jobs provisioned by Terraform:
 |---|---|---|---|
 | `at-streaming-pipeline` | D4s_v3 spot, single-node | Continuous | `src/streaming/main.py` — all streaming queries on one cluster |
 | `dbt-transform` | D2s_v3 spot, single-node | Hourly (Auckland time) | `deploy/databricks/run_dbt.py` — seed → run → test |
+
+**Why one cluster saves ~67%:** The previous design ran each streaming job on its own always-on cluster. Bronze ingestion and Q2 (stateful, memory-intensive) required a D4s_v3; Q1 and Q3 ran on D2s_v3. Databricks bills by DBU/hr — D2s_v3 at 0.75 DBU/hr, D4s_v3 at 1.5 DBU/hr.
+
+| Design | Clusters | DBU/hr |
+|---|---|---|
+| Old (4 jobs × own cluster) | Bronze(D4s) + Q1(D2s) + Q2(D4s) + Q3(D2s) | 1.5 + 0.75 + 1.5 + 0.75 = **4.5** |
+| New (1 consolidated job) | 1 × D4s | **1.5** |
+| **Saving** | | **(4.5 − 1.5) / 4.5 = 67%** |
+
+The consolidation is safe because Spark Structured Streaming queries are independent query chains that share only the SparkSession — there is no contention between them at the query planner level.
 
 <!-- SCREENSHOT PLACEHOLDER: Databricks Workflows tab showing both jobs with status indicators -->
 <!-- Suggested: docs/databricks-workflows.png -->

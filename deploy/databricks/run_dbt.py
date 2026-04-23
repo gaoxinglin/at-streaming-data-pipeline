@@ -12,7 +12,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-subprocess.check_call([sys.executable, "-m", "pip", "install", "dbt-databricks>=1.8,<2", "-q"])
+subprocess.check_call(
+    [sys.executable, "-m", "pip", "install", "dbt-databricks>=1.8,<2", "-q", "-q"],
+    stderr=subprocess.DEVNULL,
+)
 
 import shutil
 dbt_bin = shutil.which("dbt") or f"{sys.executable.rsplit('/', 1)[0]}/dbt"
@@ -24,6 +27,4 @@ dbt_args = ["--target", "prod", "--project-dir", str(project_dir), "--profiles-d
 
 subprocess.check_call([dbt_bin, "deps"] + dbt_args)
 subprocess.check_call([dbt_bin, "seed"] + dbt_args)
-
-result = subprocess.run([dbt_bin, "run"] + dbt_args, capture_output=False)
-sys.exit(result.returncode)
+subprocess.check_call([dbt_bin, "run"] + dbt_args)

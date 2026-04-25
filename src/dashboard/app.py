@@ -87,7 +87,7 @@ def _poll_messages(
     while len(msgs) < max_messages and time.time() < deadline:
         msg = consumer.poll(0.05)
         if msg is None:
-            break
+            continue
         if msg.error():
             if msg.error().code() != KafkaError._PARTITION_EOF:
                 st.warning(f"Kafka error: {msg.error()}")

@@ -178,7 +178,7 @@ def _display_table(
     show_cols = [c for c in preferred_cols if c in df.columns]
     if "received_at" in df.columns and "received_at" not in show_cols:
         show_cols.append("received_at")
-    st.dataframe(df[show_cols].head(50), use_container_width=True, hide_index=True)
+    st.dataframe(df[show_cols].head(50), width="stretch", hide_index=True)
 
 
 # --- Fetch data ---
@@ -323,7 +323,6 @@ if map_rows:
             tooltip={"text": "Reading count: {reading_count}"},
         ),
         height=420,
-        use_container_width=True,
     )
 else:
     st.info("No stall location data to map.")
@@ -452,7 +451,7 @@ if hw_buf:
         ]
         st.dataframe(
             bunching[show_cols].sort_values("headway_cv", ascending=False).head(20),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     else:

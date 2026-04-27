@@ -112,7 +112,7 @@ Streamlit live view monitoring Q1–Q3 outputs during local runs:
 | Ingestion | Python + `confluent-kafka` | Same (containerised via ACI) | Poll AT GTFS-RT APIs, serialise to Avro, publish to Kafka |
 | Message broker | Redpanda (Docker) | Azure Event Hubs (Kafka-compatible) | Streaming backbone |
 | Schema registry | Redpanda bundled | `fastavro` with repo-tracked `.avsc` files | Avro schema enforcement |
-| Stream processing | PySpark Structured Streaming | Databricks Spark (DBR 15.x LTS) | Bronze ingestion + Q1–Q3 detection + alerts consumer |
+| Stream processing | PySpark Structured Streaming | Databricks Spark (DBR 16.4 LTS) | Bronze ingestion + Q1–Q3 detection + alerts consumer |
 | Storage | Parquet files | Delta Lake on ADLS Gen2 | Medallion layers (ACID guarantees in cloud) |
 | Batch transform | dbt + DuckDB | dbt + Databricks SQL | Silver/Gold layer, historical analytics |
 | Orchestration | — | Databricks Workflows | Continuous streaming job + hourly dbt run |
@@ -408,6 +408,17 @@ make dbt-docs     # generate + serve lineage graph
 make test
 ```
 
+43 unit tests across 4 files, all run with a local PySpark session — no Kafka, no Databricks, no network. The strategy isolates detection logic from the Streaming runtime: each module is tested with batch DataFrames or mocked state objects.
+
+| File | Tests | What's covered |
+|---|---|---|
+| `test_bronze_enrichment.py` | 14 | Audit fields (`event_id`, `ingested_at`), timestamp status classification (`ok`), `event_date`/`event_hour` populated, null passthrough — VP, TU, and SA enrichment paths each covered |
+| `test_vehicle_stall.py` | 12 | Haversine accuracy, stall threshold at exactly 3 readings, time span guard (< 60 s → no stall), movement reset (> 15 m), trip_id change resets state, prior state carry-over across micro-batches, timeout cleanup, ongoing stall updates |
+| `test_headway_regularity.py` | 9 | Null/empty route filtered, headway mean + trip count, CV left null when < 3 trips, separate groups per route × direction, uniform headway (CV = 0.0), irregular headway flagged as bunching, start_time > 24 h (overnight service) supported |
+| `test_delay_alert.py` | 8 | Threshold boundary (exactly 300 s filtered out, 301 s passes), negative delay filtered, severity tiers (MODERATE / HIGH / SEVERE), output schema, field passthrough |
+
+Q2 (`applyInPandasWithState`) is the most complex job and also the most precisely tested: the detection function is called directly with a mocked `GroupState`, so state machine transitions are exercised without a streaming context.
+
 ## Streaming Job Details
 
 ### Bronze Ingestion
@@ -429,18 +440,62 @@ Consumes the `at.alerts` topic and normalises the three detection message shapes
 
 ## Data Model
 
-**Bronze** — raw event tables (VP, TU, SA) + unified `bronze.alerts`. Written by Spark Structured Streaming. Partitioned by `event_date`. No business logic.
+**Bronze** — raw event tables written by Spark Structured Streaming, partitioned by `event_date`. No business logic; raw event fidelity is preserved.
 
-**Staging** — typed views over Bronze:
-`stg_vehicle_positions`, `stg_trip_updates`, `stg_stall_events`, `stg_headway_metrics`, `stg_gtfs_routes`, `stg_gtfs_stops`
+**Staging** — typed dbt views over Bronze. Each view drops `_raw_payload`, casts types, and adds derived columns (`delay_minutes`, `route_type_label`). dbt `not_null` + range tests run on every column listed below.
 
-**Core** — dimension tables built from GTFS Static seed data:
-`dim_routes`, `dim_stops`
+| Model | Key columns | dbt tests |
+|---|---|---|
+| `stg_vehicle_positions` | `event_id` (PK), `vehicle_id`, `route_id`, `latitude`, `longitude`, `event_ts` | lat ∈ [−90, 90], lon ∈ [−180, 180] |
+| `stg_trip_updates` | `event_id` (PK), `trip_id`, `route_id`, `delay` (s), `delay_minutes`, `event_ts` | not_null on all |
+| `stg_stall_events` | `stall_id` (PK), `vehicle_id`, `reading_count` (≥ 3), `stall_duration_s` | reading_count ≥ 3 enforced |
+| `stg_headway_metrics` | `route_id`, `trip_count` (≥ 1), `headway_mean_s`, `is_bunching` | headway_mean_s ≥ 0 |
+| `stg_gtfs_routes` | `route_id` (PK), `route_short_name`, `route_type_label` | accepted_values: Bus/Rail/Other |
+| `stg_gtfs_stops` | `stop_id` (PK), `stop_name`, `stop_lat`, `stop_lon` | lat ∈ [−48, −34], lon ∈ [166, 179] (NZ bounds) |
 
-**Gold (Marts)** — incremental fact tables, each mapping to a business question:
-- `fct_delay_alerts` — Q1: delay events with route/stop enrichment
-- `fct_stall_incidents` — Q2: stall locations, durations, and vehicle IDs
-- `fct_headway_regularity` — Q3: hourly headway CV by route
+**Core** — dimension tables built from GTFS Static seeds, refreshed hourly via Databricks Workflow.
+
+| Model | Key columns |
+|---|---|
+| `dim_routes` | `route_id` (PK), `route_name` (e.g. "NX1"), `route_type_label` (Bus/Rail/Other) |
+| `dim_stops` | `stop_id` (PK), `stop_name`, `stop_lat`, `stop_lon` |
+
+**Gold (Marts)** — incremental fact tables, each answering one business question. Enriched by joining staging models to `dim_routes`.
+
+**`fct_delay_alerts`** — *Which routes have the most delay events, and how severe?*
+
+| Column | Type | Notes |
+|---|---|---|
+| `event_id` | string PK | Surrogate key from Bronze `trip_updates` |
+| `event_date` | date | Partition key; derived from source event timestamp |
+| `route_id` | string | FK → `dim_routes` |
+| `trip_id` | string | |
+| `delay` | int | Seconds; range-tested 300–7200 |
+| `delay_minutes` | float | `delay / 60.0` |
+| `route_type_label` | string | Bus / Rail / Other |
+| `event_ts` | timestamp | Original event time |
+
+**`fct_stall_incidents`** — *Where and when do stalls cluster? Which routes have the most incidents?*
+
+| Column | Type | Notes |
+|---|---|---|
+| `stall_id` | string PK | Surrogate key from Spark Q2 detection |
+| `event_date` | date | Partition key |
+| `vehicle_id` | string | |
+| `route_id` | string | FK → `dim_routes` |
+| `stall_duration_s` | int | Approx. duration; range-tested 0–86 400 |
+| `detected_at` | timestamp | Spark processing time |
+
+**`fct_headway_regularity`** — *Which routes have the worst bunching? How does headway vary by time of day?*
+
+| Column | Type | Notes |
+|---|---|---|
+| `route_id` | string | FK → `dim_routes` |
+| `hour_bucket` | timestamp | Truncated to the hour |
+| `avg_headway_s` | float | Mean headway across windows in the hour; ≥ 0 tested |
+| `headway_cv` | float | Coefficient of variation; range-tested 0–3.0; null when < 3 trips |
+| `bunching_pct` | float | % of windows where CV > 0.5; range-tested 0–100 |
+| `trip_count` | int | Total trips in the hour |
 
 ## Cloud Deployment (Terraform)
 

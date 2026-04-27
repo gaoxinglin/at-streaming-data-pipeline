@@ -32,7 +32,64 @@ Every question has a **historical counterpart** — dbt rolls the streaming outp
 
 ## Architecture
 
-![Architecture Diagram](docs/architecture.png)
+```mermaid
+flowchart TD
+    API["AT GTFS-RT API\nvehicle_positions · trip_updates · service_alerts\npolled every 30–300 s"]
+    PROD["Python Producer  (at_producer.py)\nAvro serialization · adaptive backoff · Schema Registry"]
+
+    subgraph KAFKA["  Kafka  ·  Redpanda (local) / Azure Event Hubs (cloud)  "]
+        KIN["vehicle_positions · trip_updates · service_alerts"]
+    end
+
+    subgraph SPARK["  Spark Structured Streaming  ·  4 concurrent queries, one cluster  "]
+        BRZ["Bronze Ingestion\nbronze_ingestion.py\nraw events → Parquet / Delta"]
+        Q1["Q1 · Delay Alert\ndelay_alert_job.py\nstateless · delay > 5 min"]
+        Q2["Q2 · Vehicle Stall\nvehicle_stall_job.py\nstateful · applyInPandasWithState"]
+        Q3["Q3 · Headway Regularity\nheadway_regularity_job.py\nsliding window · bunching CV"]
+    end
+
+    KOUT["at.alerts  (Kafka topic)\ndetection fan-in from Q1 · Q2 · Q3"]
+    CONS["Alerts Consumer  (alerts_consumer_job.py)\nnormalise Q1–Q3 shapes · Delta MERGE dedup"]
+
+    subgraph STORE["  Medallion Storage  ·  Parquet (local) / Delta Lake on ADLS Gen2 (cloud)  "]
+        BT["Bronze Tables\nvehicle_positions · trip_updates · service_alerts\npartitioned by event_date"]
+        BA["bronze.alerts\nunified · deduplicated on alert_id"]
+    end
+
+    subgraph TRANSFORM["  dbt  ·  DuckDB (local) / Databricks SQL (cloud)  "]
+        STG["Staging  (views)\nstg_vehicle_positions · stg_trip_updates\nstg_stall_events · stg_headway_metrics"]
+        CORE["Core  (tables)\ndim_routes · dim_stops  (GTFS Static seeds)"]
+        GOLD["Gold / Marts  (incremental)\nfct_delay_alerts · fct_stall_incidents · fct_headway_regularity"]
+    end
+
+    DASH["Streamlit Dashboard  (local)  ·  Power BI  (cloud · planned)"]
+
+    API -->|"poll"| PROD
+    PROD --> KIN
+    KIN --> BRZ & Q1 & Q2 & Q3
+    BRZ --> BT
+    Q1 & Q2 & Q3 --> KOUT
+    KOUT --> CONS
+    CONS --> BA
+    BT & BA --> STG
+    STG --> CORE & GOLD
+    CORE --> GOLD
+    GOLD --> DASH
+
+    classDef source   fill:#1e40af,color:#fff,stroke:#1e3a8a
+    classDef kafka    fill:#92400e,color:#fff,stroke:#78350f
+    classDef spark    fill:#7c3aed,color:#fff,stroke:#6d28d9
+    classDef store    fill:#b45309,color:#fff,stroke:#92400e
+    classDef dbt      fill:#c2410c,color:#fff,stroke:#9a3412
+    classDef dash     fill:#6b21a8,color:#fff,stroke:#581c87
+
+    class API,PROD source
+    class KIN,KOUT kafka
+    class BRZ,Q1,Q2,Q3,CONS spark
+    class BT,BA store
+    class STG,CORE,GOLD dbt
+    class DASH dash
+```
 
 ### Live Dashboard Preview
 
@@ -46,7 +103,7 @@ Streamlit live view monitoring Q1–Q3 outputs during local runs:
 - **Avro + Schema Registry** — contract enforcement between producer and streaming consumers. A schema-incompatible change is a build error, not a runtime surprise.
 - **Medallion architecture** — Bronze (raw), Silver (cleaned views), Gold (analytics-ready incrementals).
 - **Local/cloud parity** — local dev uses Redpanda + PySpark + Parquet + DuckDB; cloud uses Azure Event Hubs + Databricks + Delta Lake. The pipeline code is identical — only config changes via environment variables.
-- **Single streaming cluster on Databricks** — all four Structured Streaming queries run as concurrent queries in one process on one D4s_v3 node, cutting cluster DBU cost by ~67% vs. the previous per-job-per-cluster design (derivation below).
+- **Single streaming cluster on Databricks** — all four Structured Streaming queries run as concurrent queries in one process on one Standard_E2ads_v6 node, cutting cluster DBU cost by ~75% vs. the previous per-job-per-cluster design (derivation below).
 
 ## Tech Stack
 
@@ -84,43 +141,110 @@ Two jobs provisioned by Terraform:
 
 | Job | Cluster | Schedule | What it runs |
 |---|---|---|---|
-| `at-streaming-pipeline` | D4s_v3 spot, single-node | Continuous | `src/streaming/main.py` — all streaming queries on one cluster |
-| `dbt-transform` | D2s_v3 spot, single-node | Hourly (Auckland time) | `deploy/databricks/run_dbt.py` — seed → run → test |
+| `at-streaming-pipeline` | Standard_E2ads_v6 spot, single-node | Continuous | `src/streaming/main.py` — all streaming queries on one cluster |
+| `dbt-transform` | Standard_E2ads_v6 spot, single-node | Hourly (Auckland time) | `deploy/databricks/run_dbt.py` — seed → run → test |
 
-**Why one cluster saves ~67%:** The previous design ran each streaming job on its own always-on cluster. Bronze ingestion and Q2 (stateful, memory-intensive) required a D4s_v3; Q1 and Q3 ran on D2s_v3. Databricks bills by DBU/hr — D2s_v3 at 0.75 DBU/hr, D4s_v3 at 1.5 DBU/hr.
+**Why one cluster saves ~75%:** The previous design ran each streaming job on its own always-on cluster — four separate Standard_E2ads_v6 nodes. Databricks bills by DBU/hr; Standard_E2ads_v6 (2 vCPU, 16 GB) is 0.88 DBU/hr on Jobs Compute.
 
 | Design | Clusters | DBU/hr |
 |---|---|---|
-| Old (4 jobs × own cluster) | Bronze(D4s) + Q1(D2s) + Q2(D4s) + Q3(D2s) | 1.5 + 0.75 + 1.5 + 0.75 = **4.5** |
-| New (1 consolidated job) | 1 × D4s | **1.5** |
-| **Saving** | | **(4.5 − 1.5) / 4.5 = 67%** |
+| Old (4 jobs × own cluster) | Bronze + Q1 + Q2 + Q3, each on E2ads_v6 | 4 × 0.88 = **3.52** |
+| New (1 consolidated job) | 1 × E2ads_v6 | **0.88** |
+| **Saving** | | **(3.52 − 0.88) / 3.52 = 75%** |
 
 The consolidation is safe because Spark Structured Streaming queries are independent query chains that share only the SparkSession — there is no contention between them at the query planner level.
 
-<!-- SCREENSHOT PLACEHOLDER: Databricks Workflows tab showing both jobs with status indicators -->
-<!-- Suggested: docs/databricks-workflows.png -->
+### Cloud Infrastructure Screenshots
 
-<!-- SCREENSHOT PLACEHOLDER: Azure Resource Group rg-atpipe-dev overview showing all provisioned services -->
-<!-- Suggested: docs/azure-resource-group.png -->
+**Azure Resource Group**
 
-<!-- SCREENSHOT PLACEHOLDER: Azure Event Hubs namespace showing the 5 topics -->
-<!-- Suggested: docs/azure-event-hubs-topics.png -->
+![Resource Group Overview](docs/screenshots/azure_resource-group_overview.png)
 
-<!-- SCREENSHOT PLACEHOLDER: ADLS Gen2 storage containers (bronze/silver/gold/checkpoints/capture) -->
-<!-- Suggested: docs/azure-adls-containers.png -->
+**Event Hubs — Topics & Metrics**
 
-### Estimated cost (dev, idle)
+<table>
+<tr>
+<td><img src="docs/screenshots/azure_eventhubs_topics-list.png" alt="Event Hubs Topics" width="450"/></td>
+<td><img src="docs/screenshots/azure_eventhubs_namespace-metrics-3d.png" alt="Namespace Metrics (3d)" width="450"/></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/azure_eventhubs_vehicle-positions-metrics-1d.png" alt="Vehicle Positions (1d)" width="450"/></td>
+<td><img src="docs/screenshots/azure_eventhubs_vehicle-positions-metrics-1h.png" alt="Vehicle Positions (1h)" width="450"/></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/azure_eventhubs_trip-updates-metrics.png" alt="Trip Updates Metrics" width="450"/></td>
+<td><img src="docs/screenshots/azure_eventhubs_headway-metrics.png" alt="Headway Metrics" width="450"/></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/azure_eventhubs_alerts-metrics-3d.png" alt="Alerts Metrics (3d)" width="450"/></td>
+<td><img src="docs/screenshots/azure_eventhubs_service-alerts-metrics.png" alt="Service Alerts Metrics" width="450"/></td>
+</tr>
+</table>
 
-| Resource | ~AUD/month |
+**ADLS Gen2 Storage**
+
+<table>
+<tr>
+<td><img src="docs/screenshots/azure_adls_containers.png" alt="ADLS Containers" width="450"/></td>
+<td><img src="docs/screenshots/azure_adls_bronze-layer-tables.png" alt="Bronze Layer Tables" width="450"/></td>
+</tr>
+<tr>
+<td colspan="2"><img src="docs/screenshots/azure_adls_bronze-vehicle-positions-partitions.png" alt="Bronze Vehicle Positions Partitions" width="450"/></td>
+</tr>
+</table>
+
+**Container Registry & ACI Producer**
+
+<table>
+<tr>
+<td><img src="docs/screenshots/azure_acr_at-producer-image.png" alt="ACR Producer Image" width="450"/></td>
+<td><img src="docs/screenshots/azure_aci_producer-running.png" alt="ACI Producer Running" width="450"/></td>
+</tr>
+</table>
+
+**Key Vault Secrets**
+
+![Key Vault Secrets](docs/screenshots/azure_keyvault_secrets.png)
+
+**Databricks Workflows**
+
+<table>
+<tr>
+<td><img src="docs/screenshots/databricks_workflows_jobs-list.jpg" alt="Workflows Jobs List" width="450"/></td>
+<td><img src="docs/screenshots/databricks_workflows_streaming-job-run-history.png" alt="Streaming Job Run History" width="450"/></td>
+</tr>
+</table>
+
+**Streaming Cluster — Config & Metrics**
+
+<table>
+<tr>
+<td><img src="docs/screenshots/databricks_cluster_streaming-job-config.png" alt="Streaming Job Config" width="450"/></td>
+<td><img src="docs/screenshots/databricks_cluster_streaming-job-metrics.png" alt="Streaming Job Metrics" width="450"/></td>
+</tr>
+</table>
+
+**Spark UI & Run Logs**
+
+<table>
+<tr>
+<td><img src="docs/screenshots/databricks_spark-ui_streaming-queries.png" alt="Spark UI Streaming Queries" width="450"/></td>
+<td><img src="docs/screenshots/databricks_streaming_run-logs.png" alt="Streaming Run Logs" width="450"/></td>
+</tr>
+</table>
+
+**Unity Catalog — Tables**
+
+![Catalog Tables Overview](docs/screenshots/databricks_catalog_tables-overview.png)
+
+### Estimated cost
+
+| State | ~NZD |
 |---|---|
-| Databricks workspace (no running cluster) | ~$5 |
-| Event Hubs (1 TU) | ~$13 |
-| ACR Basic | ~$6 |
-| ACI producer (0.25 vCPU, always-on) | ~$3 |
-| Storage + Key Vault | ~$2 |
-| **Total idle** | **~$29** |
+| Idle (no cluster running) | ~$10/month |
+| Streaming cluster running (Standard_E2ads_v6 spot, 24/7) | **~$50/day** |
 
-Databricks cluster compute (D4s_v3 spot) adds ~$2–4/hour when running.
+Fixed monthly charges at idle: Event Hubs Standard 1 TU, ACR Basic, Storage, Key Vault, Databricks workspace. The Databricks cluster dominates cost when running — pause the job when not in active use during development.
 
 ## Data Governance
 

@@ -33,3 +33,4 @@ full_refresh = ["--full-refresh"] if os.getenv("DBT_FULL_REFRESH") else []
 subprocess.check_call([dbt_bin, "deps"] + dbt_args)
 subprocess.check_call([dbt_bin, "seed"] + dbt_args)
 subprocess.check_call([dbt_bin, "run"] + full_refresh + dbt_args)
+subprocess.check_call([dbt_bin, "test"] + dbt_args)

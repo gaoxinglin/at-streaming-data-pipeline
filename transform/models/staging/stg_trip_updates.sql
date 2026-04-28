@@ -11,7 +11,7 @@ deduped AS (
     SELECT *
     FROM source
     QUALIFY row_number() OVER (
-        PARTITION BY source_id, event_ts
+        PARTITION BY source_id, event_date, delay
         ORDER BY ingested_at
     ) = 1
 ),

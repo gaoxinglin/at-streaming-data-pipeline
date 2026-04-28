@@ -1,11 +1,13 @@
 -- Q2 Historical: vehicle stall incidents with location and duration.
 -- Reads from Spark Q2 stall detection output, enriches with route name.
 
+{%- set gold_path = env_var('GOLD_ADLS_PATH', '') -%}
 {{
     config(
         materialized='incremental',
         incremental_strategy='append',
-        unique_key='stall_id'
+        unique_key='stall_id',
+        location_root=gold_path or none
     )
 }}
 

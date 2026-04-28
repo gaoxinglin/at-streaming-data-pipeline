@@ -15,6 +15,7 @@ locals {
 
   abfss = {
     bronze      = "abfss://bronze@${local.storage_account}.dfs.core.windows.net"
+    gold        = "abfss://gold@${local.storage_account}.dfs.core.windows.net"
     checkpoints = "abfss://checkpoints@${local.storage_account}.dfs.core.windows.net"
   }
 
@@ -165,6 +166,26 @@ resource "databricks_job" "streaming" {
   depends_on  = [databricks_secret_scope.at_pipeline, databricks_repo.pipeline]
 }
 
+# --- Unity Catalog: storage credential + external location for ADLS gold ---
+# The Access Connector (created in main.tf) already has Storage Blob Data
+# Contributor on the storage account. Registering it as a UC storage credential
+# lets Unity Catalog write managed tables to our own ADLS containers.
+
+resource "databricks_storage_credential" "adls" {
+  name = "adls-credential"
+  azure_managed_identity {
+    access_connector_id = azurerm_databricks_access_connector.main.id
+  }
+  depends_on = [azurerm_databricks_workspace.main]
+}
+
+resource "databricks_external_location" "gold" {
+  name            = "gold"
+  url             = local.abfss.gold
+  credential_name = databricks_storage_credential.adls.id
+  depends_on      = [azurerm_role_assignment.ac_to_storage]
+}
+
 # --- Job: dbt (hourly scheduled) ---
 # PAUSED by default — unpause after verifying Bronze Delta tables exist.
 
@@ -193,6 +214,8 @@ resource "databricks_job" "dbt" {
         DATABRICKS_HOST      = "https://${azurerm_databricks_workspace.main.workspace_url}"
         DATABRICKS_TOKEN     = "{{secrets/at-pipeline/databricks-pat-token}}"
         DATABRICKS_HTTP_PATH = "{{secrets/at-pipeline/databricks-http-path}}"
+        GOLD_ADLS_PATH       = local.abfss.gold
+        # Set DBT_FULL_REFRESH = "1" here for a one-time full rebuild, then remove it.
       }
     }
 

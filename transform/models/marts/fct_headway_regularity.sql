@@ -1,10 +1,12 @@
 -- Q3 Historical: hourly headway regularity by route.
 -- Rolls up Spark Q3 sliding-window metrics into hourly buckets for trend analysis.
 
+{%- set gold_path = env_var('GOLD_ADLS_PATH', '') -%}
 {{
     config(
         materialized='incremental',
-        incremental_strategy='append'
+        incremental_strategy='append',
+        location_root=gold_path or none
     )
 }}
 

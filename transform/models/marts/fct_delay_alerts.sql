@@ -2,11 +2,13 @@
 -- Filters trip_updates where delay > 5 min and enriches with route dimension.
 -- This is the dbt counterpart to the real-time Spark delay_alert_job.
 
+{%- set gold_path = env_var('GOLD_ADLS_PATH', '') -%}
 {{
     config(
         materialized='incremental',
         incremental_strategy='append',
-        unique_key='event_id'
+        unique_key='event_id',
+        location_root=gold_path or none
     )
 }}
 

@@ -1,8 +1,19 @@
 -- Clean trip delay updates from Bronze.
--- Filters out deleted records, adds delay_minutes.
+-- Deduplicates on (source_id, event_ts): the AT API returns the same trip update
+-- on every poll (~30s) until the trip state changes, so bronze accumulates many
+-- identical rows per logical event. We keep the first ingested copy.
 
 WITH source AS (
     SELECT * FROM {{ read_bronze('trip_updates') }}
+),
+
+deduped AS (
+    SELECT *
+    FROM source
+    QUALIFY row_number() OVER (
+        PARTITION BY source_id, event_ts
+        ORDER BY ingested_at
+    ) = 1
 ),
 
 cleaned AS (
@@ -19,7 +30,7 @@ cleaned AS (
         event_ts,
         cast(event_ts AS date) AS event_date,
         extract(HOUR FROM event_ts) AS event_hour
-    FROM source
+    FROM deduped
     WHERE is_deleted = false
 )
 

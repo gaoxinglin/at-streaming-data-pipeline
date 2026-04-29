@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v5
         with:
           version: "latest"
 
@@ -83,8 +83,12 @@ jobs:
           [ "$http_code" = "200" ] || { echo "ERROR: $body"; exit 1; }
           repo_id=$(echo "$body" | jq -r '.repos[] | select(.url | contains("at-streaming-data-pipeline")) | .id')
           [ -n "$repo_id" ] || { echo "ERROR: repo not found in workspace"; exit 1; }
-          curl -sf -X PATCH "$DATABRICKS_HOST/api/2.0/repos/$repo_id" \
+          patch_response=$(curl -s -w "\n%{http_code}" -X PATCH "$DATABRICKS_HOST/api/2.0/repos/$repo_id" \
             -H "Authorization: Bearer $DATABRICKS_TOKEN" \
             -H "Content-Type: application/json" \
-            -d '{"branch": "main"}'
+            -d '{"branch": "main"}')
+          patch_code=$(echo "$patch_response" | tail -1)
+          patch_body=$(echo "$patch_response" | head -n -1)
+          echo "PATCH HTTP $patch_code"
+          [ "$patch_code" = "200" ] || { echo "ERROR: $patch_body"; exit 1; }
           echo "Synced repo $repo_id to main"

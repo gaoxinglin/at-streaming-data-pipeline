@@ -436,6 +436,57 @@ CI runs on every push via GitHub Actions (`.github/workflows/ci.yml`): Python li
 
 Q2 (`applyInPandasWithState`) is the most complex job and also the most precisely tested: the detection function is called directly with a mocked `GroupState`, so state machine transitions are exercised without a streaming context.
 
+## Observability & CI/CD
+
+### CI/CD — GitHub Actions
+
+Three-stage pipeline in `.github/workflows/ci.yml`, triggered on every push:
+
+```
+push (any branch)
+  └── lint-and-unit          ← always runs
+        ├── integration       ← PRs to main only
+        └── deploy            ← push to main only
+```
+
+| Stage | Trigger | Steps |
+|---|---|---|
+| `lint-and-unit` | Every push | Python lint (`black` + `ruff`), SQL lint (`sqlfluff` on dbt models), dbt compile against DuckDB dev target, dbt parse against Databricks prod target (with placeholder credentials to verify schema only), full unit test suite |
+| `integration` | PRs → `main` | `pytest tests/integration/` — heavier tests that spin up a local PySpark session against real Parquet files |
+| `deploy` | Push → `main` | Calls the Databricks Repos REST API (`PATCH /api/2.0/repos/:id`) to sync the workspace repo to `main`, making the latest code available to the running Workflows jobs without a redeploy |
+
+The `deploy` step requires one secret: `DATABRICKS_TOKEN` (service principal PAT stored in GitHub repository secrets). No Terraform apply happens in CI — infra changes are applied manually with `terraform apply`.
+
+### Observability
+
+The pipeline is observable at four layers:
+
+**1. Live streaming output — Streamlit**
+
+`src/dashboard/app.py` reads the `at.alerts` and `at.headway_metrics` Kafka topics directly and refreshes every 30 seconds. This gives real-time visibility into Q1–Q3 detection output without touching any storage layer — useful for verifying the pipeline is emitting correctly during local development or cloud smoke tests.
+
+**2. Historical analytics — Power BI**
+
+Power BI connects via DirectQuery to the Databricks SQL Warehouse, querying the Gold fact tables (`fct_delay_alerts`, `fct_delay_by_hour`, `fct_stall_incidents`, `fct_headway_regularity`). Four report pages: Summary · Delay · Stall · Headway Regularity. Because it's DirectQuery (not import), the dashboard always reflects the latest dbt run without a scheduled refresh.
+
+**3. Infrastructure metrics — Azure Event Hubs**
+
+Azure Event Hubs exposes built-in namespace-level metrics in the Azure portal: incoming/outgoing message counts, throughput (bytes), consumer group lag, throttled requests, and server errors. These are the first place to check if the producer or a streaming consumer goes silent. The screenshots in the Cloud Deployment section above show a live 3-day and 1-hour view.
+
+**4. Spark & cluster metrics — Databricks**
+
+- **Spark UI** (`/sparkui` on the cluster): streaming query progress for each of the four concurrent queries — micro-batch duration, input/processing rates, state store size (Q2), watermark lag (Q3).
+- **Databricks run logs**: stdout/stderr per workflow run, accessible from the job run history page.
+- **Cluster metrics tab**: CPU, memory, and network I/O for the single E2ads_v6 node.
+
+**Latency instrumentation**
+
+Every detection event carries two timestamps: `event_ts` (the AT GTFS-RT source timestamp) and `detected_at` (Spark processing time). The gap between them is the end-to-end detection latency. It's not surfaced in a dashboard, but it's queryable via `fct_delay_alerts.event_ts` vs `bronze.alerts.detected_at` if latency analysis is needed.
+
+**Data quality signals**
+
+dbt runs `not_null` and range tests against every Gold table column after each hourly Databricks Workflow run. A failing test fails the workflow task — visible in the job run history as a red task. The Delta Lake transaction log on the Gold layer additionally provides a full write history for auditing unexpected row counts or schema changes.
+
 ## Streaming Job Details
 
 ### Bronze Ingestion

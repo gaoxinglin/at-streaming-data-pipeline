@@ -124,7 +124,7 @@ locals {
 # --- Job: Streaming Pipeline (all queries on one cluster) ---
 # Bronze ingestion + Q1 delay alerts + Q2 vehicle stalls + Q3 headway regularity
 # run as concurrent Structured Streaming queries in a single process.
-# Previously 4 jobs × mixed D2s/D4s clusters; now one D4s 24/7 — ~57% cheaper.
+# Previously 4 jobs × E2 clusters; now one E2 24/7 — ~75% cheaper.
 
 resource "databricks_job" "streaming" {
   name = "at-streaming-pipeline"

@@ -63,19 +63,24 @@ flowchart TD
         GOLD["Gold / Marts  (incremental)\nfct_delay_alerts · fct_delay_by_hour · fct_stall_incidents · fct_headway_regularity"]
     end
 
-    DASH["Streamlit Dashboard  (live)  ·  Power BI  "]
+    KHWM["at.headway_metrics  (Kafka topic)\nQ3 windowed aggregation output"]
+    STREAMLIT["Streamlit Dashboard  (live)\napp.py · reads Kafka directly"]
+    POWERBI["Power BI\nDirectQuery → Databricks SQL Warehouse"]
 
     API -->|"poll"| PROD
     PROD --> KIN
     KIN --> BRZ & Q1 & Q2 & Q3
     BRZ --> BT
     Q1 & Q2 & Q3 --> KOUT
+    Q3 --> KHWM
     KOUT --> CONS
     CONS --> BA
     BT & BA --> STG
     STG --> CORE & GOLD
     CORE --> GOLD
-    GOLD --> DASH
+    GOLD --> POWERBI
+    KOUT --> STREAMLIT
+    KHWM --> STREAMLIT
 
     classDef source   fill:#1e40af,color:#fff,stroke:#1e3a8a
     classDef kafka    fill:#92400e,color:#fff,stroke:#78350f
@@ -85,11 +90,11 @@ flowchart TD
     classDef dash     fill:#6b21a8,color:#fff,stroke:#581c87
 
     class API,PROD source
-    class KIN,KOUT kafka
+    class KIN,KOUT,KHWM kafka
     class BRZ,Q1,Q2,Q3,CONS spark
     class BT,BA store
     class STG,CORE,GOLD dbt
-    class DASH dash
+    class STREAMLIT,POWERBI dash
 ```
 
 ### Live Dashboard Preview
@@ -261,6 +266,11 @@ AT GTFS-RT API
   ▼
 Kafka Topics  (vehicle_positions / trip_updates / service_alerts)
   │  Avro — schema enforced by Schema Registry / fastavro
+  │
+  ├──► at.alerts · at.headway_metrics  (Kafka topics)
+  │         Q1–Q3 detection outputs. Streamlit reads these directly —
+  │         no dbt in this path.
+  │
   ▼
 Bronze Layer  (Parquet / Delta Lake)
   │  Raw event tables (VP, TU, SA) written by Spark Structured Streaming.

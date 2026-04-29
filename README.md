@@ -11,6 +11,7 @@
 ![Terraform](https://img.shields.io/badge/Terraform-7B42BC?logo=terraform&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+[![CI](https://github.com/gaoxinglin/at-streaming-data-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/gaoxinglin/at-streaming-data-pipeline/actions/workflows/ci.yml)
 
 A streaming-first data pipeline that ingests Auckland Transport GTFS-Realtime feeds, detects operational anomalies in real time using Spark Structured Streaming, and builds historical analytics with dbt on Databricks.
 
@@ -62,7 +63,7 @@ flowchart TD
         GOLD["Gold / Marts  (incremental)\nfct_delay_alerts · fct_delay_by_hour · fct_stall_incidents · fct_headway_regularity"]
     end
 
-    DASH["Streamlit Dashboard  (local)  ·  Power BI  (cloud)"]
+    DASH["Streamlit Dashboard  (live)  ·  Power BI  "]
 
     API -->|"poll"| PROD
     PROD --> KIN
@@ -413,6 +414,8 @@ make test
 ```
 
 43 unit tests across 4 files, all run with a local PySpark session — no Kafka, no Databricks, no network. The strategy isolates detection logic from the Streaming runtime: each module is tested with batch DataFrames or mocked state objects.
+
+CI runs on every push via GitHub Actions (`.github/workflows/ci.yml`): Python lint (`black` + `ruff`), SQL lint (`sqlfluff` on dbt models), dbt compile against both DuckDB dev and Databricks prod targets, then the full unit test suite. Integration tests run on PRs to `main`. A passing badge is shown at the top of this README.
 
 | File | Tests | What's covered |
 |---|---|---|

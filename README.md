@@ -59,10 +59,10 @@ flowchart TD
     subgraph TRANSFORM["  dbt  ·  DuckDB (local) / Databricks SQL (cloud)  "]
         STG["Staging  (views)\nstg_vehicle_positions · stg_trip_updates\nstg_stall_events · stg_headway_metrics"]
         CORE["Core  (tables)\ndim_routes · dim_stops  (GTFS Static seeds)"]
-        GOLD["Gold / Marts  (incremental)\nfct_delay_alerts · fct_stall_incidents · fct_headway_regularity"]
+        GOLD["Gold / Marts  (incremental)\nfct_delay_alerts · fct_delay_by_hour · fct_stall_incidents · fct_headway_regularity"]
     end
 
-    DASH["Streamlit Dashboard  (local)  ·  Power BI  (cloud · planned)"]
+    DASH["Streamlit Dashboard  (local)  ·  Power BI  (cloud)"]
 
     API -->|"poll"| PROD
     PROD --> KIN
@@ -97,6 +97,10 @@ Streamlit live view monitoring Q1–Q3 outputs during local runs:
 
 ![Streamlit Live Dashboard](docs/streamlit-live-dashboard.png)
 
+Power BI dashboard connected via DirectQuery to Databricks SQL Warehouse:
+
+![Power BI Dashboard](docs/powerbi_dashboard.png)
+
 **Key architecture decisions:**
 
 - **Spark for live detection, dbt for historical rollups** — no Spark batch layer. Gold-layer queries are SQL aggregations; dbt handles them in seconds on Databricks SQL.
@@ -117,7 +121,7 @@ Streamlit live view monitoring Q1–Q3 outputs during local runs:
 | Batch transform | dbt + DuckDB | dbt + Databricks SQL | Silver/Gold layer, historical analytics |
 | Orchestration | — | Databricks Workflows | Continuous streaming job + hourly dbt run |
 | Infrastructure | Docker Compose | Terraform (Azure) | Local Kafka; full Azure stack provisioning |
-| Dashboard | Streamlit (local) | Power BI (planned) | Live Q1–Q3 monitoring + historical BI |
+| Dashboard | Streamlit (local) | Power BI | Live Q1–Q3 monitoring + historical BI |
 
 ## Cloud Deployment (Azure + Databricks)
 
@@ -272,11 +276,11 @@ Core Layer  (dbt tables)
   │  dim_routes, dim_stops — built from GTFS Static seed data.
   ▼
 Gold / Marts Layer  (dbt incremental models)
-  │  fct_delay_alerts, fct_stall_incidents, fct_headway_regularity
+  │  fct_delay_alerts, fct_delay_by_hour, fct_stall_incidents, fct_headway_regularity
   │  Fact tables enriched with route/stop dimensions.
   ▼
-Power BI  (DirectQuery on Databricks SQL Warehouse)  [planned]
-     3 report pages mapped 1:1 to Q1, Q2, Q3.
+Power BI  (DirectQuery on Databricks SQL Warehouse)
+     4 report pages: Summary · Delay · Stall · Headway Regularity
 ```
 
 ### Schema Contracts
@@ -461,6 +465,17 @@ Consumes the `at.alerts` topic and normalises the three detection message shapes
 | `dim_stops` | `stop_id` (PK), `stop_name`, `stop_lat`, `stop_lon` |
 
 **Gold (Marts)** — incremental fact tables, each answering one business question. Enriched by joining staging models to `dim_routes`.
+
+**`fct_delay_by_hour`** — *How does average delay vary across hours of the day?*
+
+| Column | Type | Notes |
+|---|---|---|
+| `event_date` | date | Partition key |
+| `event_hour` | int | Hour of day (0–23) |
+| `avg_delay_minutes` | float | Mean delay across all trips (on-time included); captures rush-hour shape |
+| `avg_delay_minutes_delayed_only` | float | Mean delay for trips with delay > 0; typically a flatter ~9 min line |
+| `trip_count` | int | Total trip updates in the hour |
+| `delayed_trip_count` | int | Trips with delay > 300 s |
 
 **`fct_delay_alerts`** — *Which routes have the most delay events, and how severe?*
 

@@ -20,8 +20,8 @@ cleaned AS (
         unix_timestamp(cast(to_timestamp(stall_detected_ts) AS timestamp))
         - unix_timestamp(first_seen) AS stall_duration_s,
         detected_at,
-        event_date,
-        extract(HOUR FROM first_seen) AS event_hour
+        cast(convert_timezone('UTC', 'Pacific/Auckland', first_seen) AS date) AS event_date,
+        extract(HOUR FROM convert_timezone('UTC', 'Pacific/Auckland', first_seen)) AS event_hour
     FROM source
 )
 

@@ -28,8 +28,9 @@ cleaned AS (
         delay,
         round(delay / 60.0, 2) AS delay_minutes,
         event_ts,
-        cast(event_ts AS date) AS event_date,
-        extract(HOUR FROM event_ts) AS event_hour
+        -- event_ts is UTC; convert to NZ local time for date/hour partitioning
+        cast(convert_timezone('UTC', 'Pacific/Auckland', event_ts) AS date) AS event_date,
+        extract(HOUR FROM convert_timezone('UTC', 'Pacific/Auckland', event_ts)) AS event_hour
     FROM deduped
     WHERE is_deleted = false
 )

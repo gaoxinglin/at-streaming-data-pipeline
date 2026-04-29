@@ -29,8 +29,8 @@ cleaned AS (
         stop_id,
         current_status,
         event_ts,
-        cast(event_ts AS date) AS event_date,
-        extract(HOUR FROM event_ts) AS event_hour
+        cast(convert_timezone('UTC', 'Pacific/Auckland', event_ts) AS date) AS event_date,
+        extract(HOUR FROM convert_timezone('UTC', 'Pacific/Auckland', event_ts)) AS event_hour
     FROM deduped
     WHERE
         latitude BETWEEN -90 AND 90

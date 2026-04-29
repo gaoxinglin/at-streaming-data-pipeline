@@ -58,6 +58,26 @@ models:
       - name: detected_at
         tests: [not_null]
 
+  - name: fct_delay_by_hour
+    description: >
+      Hourly delay summary across ALL trips (on-time + delayed).
+      Used by the "Delay by hour" dashboard chart — including on-time trips
+      produces the natural rush-hour pattern that filtered fct_delay_alerts cannot.
+    columns:
+      - name: event_date
+        tests: [not_null]
+      - name: event_hour
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+                max_value: 23
+      - name: avg_delay_minutes
+        tests: [not_null]
+      - name: trip_count
+        tests: [not_null]
+
   - name: fct_headway_regularity
     description: >
       Q3 Historical: hourly headway regularity by route, rolled up from Spark sliding windows.
